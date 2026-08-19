@@ -75,6 +75,19 @@ class FinancialMetricListCreateView(generics.ListCreateAPIView):
         )
 
 
+class FinancialMetricDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = FinancialMetric.objects.select_related('financial_period', 'source_document')
+    serializer_class = FinancialMetricSerializer
+    permission_classes = [IsAuthenticated, IsFinanceOrAbove]
+
+    def perform_update(self, serializer):
+        serializer.save(is_manual=True)
+        logger.info(
+            f'Manual metric updated: {serializer.instance.metric_code} '
+            f'by {self.request.user.email}'
+        )
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def financial_summary(request):

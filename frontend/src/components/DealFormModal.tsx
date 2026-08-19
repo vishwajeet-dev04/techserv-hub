@@ -4,7 +4,7 @@ import { companiesApi } from '../api/companies'
 import { dealsApi } from '../api/deals'
 import { getErrorMessage } from '../api/errors'
 import type { DealStage } from '../types'
-import Modal, { fieldClass, labelClass } from './Modal'
+import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
 interface DealFormModalProps {
   open: boolean
@@ -94,8 +94,22 @@ export default function DealFormModal({ open, onClose, companyId }: DealFormModa
   }
 
   return (
-    <Modal open={open} title="Add Deal" onClose={handleClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal
+      open={open}
+      title="Add Deal"
+      onClose={handleClose}
+      footer={
+        <>
+          <button type="button" onClick={handleClose} className={btnSecondaryClass}>
+            Cancel
+          </button>
+          <button type="submit" form="deal-form" disabled={mutation.isPending} className={btnPrimaryClass}>
+            {mutation.isPending ? 'Saving...' : 'Save Deal'}
+          </button>
+        </>
+      }
+    >
+      <form id="deal-form" onSubmit={handleSubmit} className="space-y-4">
         {error ? (
           <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
             <p className="text-sm text-red-600">{error}</p>
@@ -104,8 +118,8 @@ export default function DealFormModal({ open, onClose, companyId }: DealFormModa
 
         {companyId ? null : (
           <div>
-            <label className={labelClass}>Company</label>
-            <select className={fieldClass} value={company} onChange={(e) => setCompany(e.target.value)} required>
+            <label htmlFor="deal-company" className={labelClass}>Company</label>
+            <select id="deal-company" className={fieldClass} value={company} onChange={(e) => setCompany(e.target.value)} required>
               <option value="">Select company</option>
               {companies.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -120,14 +134,15 @@ export default function DealFormModal({ open, onClose, companyId }: DealFormModa
         )}
 
         <div>
-          <label className={labelClass}>Deal name</label>
-          <input className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} required />
+          <label htmlFor="deal-name" className={labelClass}>Deal name</label>
+          <input id="deal-name" className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>Value (INR)</label>
+            <label htmlFor="deal-value" className={labelClass}>Value (INR)</label>
             <input
+              id="deal-value"
               type="number"
               min="0"
               step="0.01"
@@ -138,8 +153,8 @@ export default function DealFormModal({ open, onClose, companyId }: DealFormModa
             />
           </div>
           <div>
-            <label className={labelClass}>Stage</label>
-            <select className={fieldClass} value={stage} onChange={(e) => setStage(e.target.value as DealStage)}>
+            <label htmlFor="deal-stage" className={labelClass}>Stage</label>
+            <select id="deal-stage" className={fieldClass} value={stage} onChange={(e) => setStage(e.target.value as DealStage)}>
               <option value="LEAD">Lead</option>
               <option value="QUALIFIED">Qualified</option>
               <option value="REQUIREMENT">Requirement</option>
@@ -153,39 +168,23 @@ export default function DealFormModal({ open, onClose, companyId }: DealFormModa
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>Expected close date</label>
-            <input type="date" className={fieldClass} value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
+            <label htmlFor="deal-close" className={labelClass}>Expected close date</label>
+            <input id="deal-close" type="date" className={fieldClass} value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
           </div>
           <div>
-            <label className={labelClass}>Source</label>
-            <input className={fieldClass} value={source} onChange={(e) => setSource(e.target.value)} placeholder="Referral, inbound..." />
+            <label htmlFor="deal-source" className={labelClass}>Source</label>
+            <input id="deal-source" className={fieldClass} value={source} onChange={(e) => setSource(e.target.value)} placeholder="Referral, inbound..." />
           </div>
         </div>
 
         <div>
-          <label className={labelClass}>Description</label>
+          <label htmlFor="deal-description" className={labelClass}>Description</label>
           <textarea
+            id="deal-description"
             className={`${fieldClass} min-h-[80px] resize-y`}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-4 py-2 rounded-xl text-sm text-[#6e6e73] bg-white border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6]"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 shadow-sm disabled:opacity-50"
-          >
-            {mutation.isPending ? 'Saving...' : 'Save Deal'}
-          </button>
         </div>
       </form>
     </Modal>

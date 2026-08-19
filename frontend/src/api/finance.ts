@@ -24,7 +24,7 @@ export const financeApi = {
   },
   listMetrics: async (periodId: string): Promise<PaginatedResponse<FinancialMetric>> => {
     const response = await apiClient.get<PaginatedResponse<FinancialMetric>>('/finance/metrics/', {
-      params: { period_id: periodId },
+      params: { period_id: periodId, page_size: 100 },
     })
     return response.data
   },
@@ -35,6 +35,13 @@ export const financeApi = {
     currency: string
   }): Promise<FinancialMetric> => {
     const response = await apiClient.post<FinancialMetric>('/finance/metrics/', data)
+    return response.data
+  },
+  updateMetric: async (
+    id: string,
+    data: { value: number; currency?: string },
+  ): Promise<FinancialMetric> => {
+    const response = await apiClient.patch<FinancialMetric>(`/finance/metrics/${id}/`, data)
     return response.data
   },
   uploadDocument: async (formData: FormData): Promise<FinancialDocument> => {

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { companiesApi } from '../api/companies'
 import { getErrorMessage } from '../api/errors'
-import Modal, { fieldClass, labelClass } from './Modal'
+import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
 function normalizeUrl(value: string): string {
   const trimmed = value.trim()
@@ -77,8 +77,20 @@ export default function ContactFormModal({ open, companyId, onClose }: ContactFo
   }
 
   return (
-    <Modal open={open} title="Add Contact" onClose={handleClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal
+      open={open}
+      title="Add Contact"
+      onClose={handleClose}
+      footer={
+        <>
+          <button type="button" onClick={handleClose} className={btnSecondaryClass}>Cancel</button>
+          <button type="submit" form="contact-form" disabled={mutation.isPending} className={btnPrimaryClass}>
+            {mutation.isPending ? 'Saving...' : 'Save Contact'}
+          </button>
+        </>
+      }
+    >
+      <form id="contact-form" onSubmit={handleSubmit} className="space-y-4">
         {error ? (
           <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
             <p className="text-sm text-red-600">{error}</p>
@@ -87,60 +99,44 @@ export default function ContactFormModal({ open, companyId, onClose }: ContactFo
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>First name</label>
-            <input className={fieldClass} value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
+            <label htmlFor="contact-first" className={labelClass}>First name</label>
+            <input id="contact-first" className={fieldClass} value={firstName} onChange={(e) => setFirstName(e.target.value)} required />
           </div>
           <div>
-            <label className={labelClass}>Last name</label>
-            <input className={fieldClass} value={lastName} onChange={(e) => setLastName(e.target.value)} required />
+            <label htmlFor="contact-last" className={labelClass}>Last name</label>
+            <input id="contact-last" className={fieldClass} value={lastName} onChange={(e) => setLastName(e.target.value)} required />
           </div>
         </div>
 
         <div>
-          <label className={labelClass}>Designation</label>
-          <input className={fieldClass} value={designation} onChange={(e) => setDesignation(e.target.value)} placeholder="CTO, Procurement..." />
+          <label htmlFor="contact-designation" className={labelClass}>Designation</label>
+          <input id="contact-designation" className={fieldClass} value={designation} onChange={(e) => setDesignation(e.target.value)} placeholder="CTO, Procurement..." />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>Email</label>
-            <input type="email" className={fieldClass} value={email} onChange={(e) => setEmail(e.target.value)} />
+            <label htmlFor="contact-email" className={labelClass}>Email</label>
+            <input id="contact-email" type="email" className={fieldClass} value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div>
-            <label className={labelClass}>Phone</label>
-            <input className={fieldClass} value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <label htmlFor="contact-phone" className={labelClass}>Phone</label>
+            <input id="contact-phone" className={fieldClass} value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
         </div>
 
         <div>
-          <label className={labelClass}>LinkedIn</label>
-          <input className={fieldClass} value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} placeholder="linkedin.com/in/..." />
+          <label htmlFor="contact-linkedin" className={labelClass}>LinkedIn</label>
+          <input id="contact-linkedin" className={fieldClass} value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} placeholder="linkedin.com/in/..." />
         </div>
 
         <div>
-          <label className={labelClass}>Notes</label>
+          <label htmlFor="contact-notes" className={labelClass}>Notes</label>
           <textarea
+            id="contact-notes"
             className={`${fieldClass} min-h-[80px] resize-y`}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-4 py-2 rounded-xl text-sm text-[#6e6e73] bg-white border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6]"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 shadow-sm disabled:opacity-50"
-          >
-            {mutation.isPending ? 'Saving...' : 'Save Contact'}
-          </button>
         </div>
       </form>
     </Modal>

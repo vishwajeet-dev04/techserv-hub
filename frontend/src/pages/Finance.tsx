@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { financeApi } from '../api/finance'
 import { getErrorMessage } from '../api/errors'
+import { useAuth } from '../hooks/useAuth'
 import type { FinancialPeriod, FinancialMetric } from '../types'
 import PeriodFormModal from '../components/PeriodFormModal'
 import DocumentUploadModal from '../components/DocumentUploadModal'
@@ -85,7 +86,7 @@ function MetricCard({
         : 'bg-white border-[#e5e5ea]'
     }`}>
       <div className="flex items-start justify-between mb-3 gap-2">
-        <p className={`text-[11px] font-medium uppercase tracking-widest leading-tight ${accent ? 'text-violet-100' : 'text-[#6e6e73]'}`}>
+      <p className={`text-xs font-medium uppercase tracking-wider leading-tight ${accent ? 'text-violet-100' : 'text-[#6e6e73]'}`}>
           {label}
         </p>
         {isManual ? (
@@ -99,6 +100,9 @@ function MetricCard({
       }`}>
         {fmtCurrency(value)}
       </p>
+      <svg viewBox="0 0 80 24" className={`w-full h-6 mt-3 ${accent ? 'text-white/50' : isNegative ? 'text-red-300' : 'text-violet-300'}`}>
+        <path d="M0 16 C10 16 14 8 24 10 S40 20 50 12 68 6 80 10" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      </svg>
     </div>
   )
 }
@@ -135,7 +139,7 @@ function PeriodSelector({
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 bg-white border border-[#e5e5ea] shadow-sm rounded-2xl">
-      <div className="w-16 h-16 rounded-2xl bg-[#f5f5f7] border border-[#e5e5ea] flex items-center justify-center mb-4 text-[#aeaeb2]">
+      <div className="w-14 h-14 bg-[#f5f5f7] rounded-2xl flex items-center justify-center mb-4 text-[#aeaeb2]">
         <ChartIcon />
       </div>
       <p className="text-sm font-medium text-[#6e6e73]">{title}</p>
@@ -158,26 +162,20 @@ function MetricsEntryForm({
   periodId,
   metricMap,
   prefillKey,
-  defaultOpen,
+  onClose,
+  onSaved,
 }: {
   periodId: string
   metricMap: Record<string, FinancialMetric>
   prefillKey: string
-  defaultOpen: boolean
+  onClose: () => void
+  onSaved: (message: string) => void
 }) {
   const queryClient = useQueryClient()
-  const [open, setOpen] = useState(defaultOpen)
   const [values, setValues] = useState<Record<string, string>>(emptyMetricValues)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-
-  useEffect(() => {
-    setOpen(defaultOpen)
-    setError('')
-    setSuccess('')
-    // Only reset expand/messages when the selected period changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodId])
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     const next = emptyMetricValues()
@@ -186,130 +184,147 @@ function MetricsEntryForm({
       next[code] = existing != null ? String(existing.value) : ''
     }
     setValues(next)
+    setError('')
+    setNote('')
     // metricMap is recreated each parent render; prefillKey fingerprints values.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodId, prefillKey])
 
-  const mutation = useMutation({
-    mutationFn: async (codes: string[]) => {
-      await Promise.all(
-        codes.map((code) =>
-          financeApi.createMetric({
-            financial_period: periodId,
-            metric_code: code,
-            value: Number(values[code]),
-            currency: 'INR',
-          }),
-        ),
-      )
-    },
-    onSuccess: async () => {
-      setError('')
-      setSuccess('Metrics saved.')
-      await queryClient.invalidateQueries({ queryKey: ['financial-metrics'] })
-      await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-    },
-    onError: (err) => {
-      setSuccess('')
-      setError(getErrorMessage(err, 'Could not save metrics.'))
-    },
-  })
-
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     setError('')
-    setSuccess('')
     const filled = ALL_METRIC_CODES.filter((code) => values[code]?.trim())
     if (filled.length === 0) {
       setError('Enter at least one metric value.')
       return
     }
-    mutation.mutate(filled)
+
+    setSaving(true)
+    const failed: string[] = []
+    let saved = 0
+
+    for (const code of filled) {
+      const value = Number(values[code])
+      if (Number.isNaN(value)) {
+        failed.push(`${metricLabels[code] ?? code} (invalid number)`)
+        continue
+      }
+      try {
+        const existing = metricMap[code]
+        if (existing) {
+          await financeApi.updateMetric(existing.id, { value, currency: 'INR' })
+        } else {
+          await financeApi.createMetric({
+            financial_period: periodId,
+            metric_code: code,
+            value,
+            currency: 'INR',
+          })
+        }
+        saved += 1
+      } catch (err) {
+        failed.push(`${metricLabels[code] ?? code}: ${getErrorMessage(err, 'could not save')}`)
+      }
+    }
+
+    await queryClient.invalidateQueries({ queryKey: ['financial-metrics', periodId] })
+    await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    await queryClient.invalidateQueries({ queryKey: ['dashboard-alerts'] })
+    setSaving(false)
+
+    if (failed.length > 0) {
+      const prefix = saved > 0 ? `Saved ${saved}. ` : ''
+      setError(`${prefix}Failed to save: ${failed.join('; ')}`)
+      return
+    }
+    onSaved(`${saved} metric${saved === 1 ? '' : 's'} saved.`)
+    onClose()
   }
 
   return (
-    <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-[#f9f9fb] transition-colors"
-      >
-        <div>
-          <p className="text-sm font-medium text-[#1a1a1a]">Enter Metrics</p>
-          <p className="text-xs text-[#6e6e73] mt-0.5">Manual income statement and balance sheet values</p>
+    <form onSubmit={handleSubmit} className="bg-white border border-[#e5e5ea] rounded-2xl p-6 shadow-sm space-y-6">
+      {error ? (
+        <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
+          <p className="text-sm text-red-600">{error}</p>
         </div>
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className={`text-[#aeaeb2] transition-transform ${open ? 'rotate-180' : ''}`}
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
-
-      {open ? (
-        <form onSubmit={handleSubmit} className="px-5 pb-5 space-y-5 border-t border-[#e5e5ea] pt-4">
-          {error ? (
-            <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-          ) : null}
-          {success ? (
-            <div className="px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200">
-              <p className="text-sm text-emerald-700">{success}</p>
-            </div>
-          ) : null}
-
-          {metricGroups.map((group) => (
-            <div key={group.label} className="space-y-3">
-              <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">
-                {group.label}
-              </p>
-              <div className="space-y-2">
-                {group.codes.map((code) => (
-                  <div key={code} className="flex items-center gap-4">
-                    <label className="w-48 shrink-0 text-sm text-[#1a1a1a]">
-                      {metricLabels[code] ?? code}
-                    </label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={values[code] ?? ''}
-                      onChange={(e) =>
-                        setValues((prev) => ({ ...prev, [code]: e.target.value }))
-                      }
-                      className="flex-1 px-4 py-2.5 bg-white border border-[#e5e5ea] rounded-xl text-sm text-[#1a1a1a] placeholder-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-colors text-right"
-                      placeholder="0"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-
-          <div className="flex justify-end pt-1">
-            <button
-              type="submit"
-              disabled={mutation.isPending}
-              className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 shadow-sm disabled:opacity-50"
-            >
-              {mutation.isPending ? 'Saving...' : 'Save Metrics'}
-            </button>
-          </div>
-        </form>
       ) : null}
-    </div>
+      {note ? (
+        <div className="px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
+          <p className="text-sm text-amber-800">{note}</p>
+        </div>
+      ) : null}
+
+      {metricGroups.map((group, groupIndex) => (
+        <div
+          key={group.label}
+          className={groupIndex > 0 ? 'pt-5 border-t border-[#e5e5ea]' : ''}
+        >
+          <p className="text-[#6e6e73] text-xs font-semibold uppercase tracking-widest mb-3">
+            {group.label}
+          </p>
+          <div>
+            {group.codes.map((code) => (
+              <div
+                key={code}
+                className="flex items-center justify-between gap-4 py-2.5 border-b border-[#f5f5f7] last:border-0"
+              >
+                <label htmlFor={`metric-${code}`} className="text-[#3a3a3c] text-sm font-medium">
+                  {metricLabels[code] ?? code}
+                </label>
+                <input
+                  id={`metric-${code}`}
+                  type="number"
+                  step="0.01"
+                  value={values[code] ?? ''}
+                  onChange={(e) =>
+                    setValues((prev) => ({ ...prev, [code]: e.target.value }))
+                  }
+                  className="w-48 bg-white border border-[#e5e5ea] rounded-xl px-3 py-2 text-sm text-right text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors"
+                  placeholder="0.00"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div className="flex items-center justify-between gap-3 pt-1">
+        <button
+          type="button"
+          onClick={() => setNote('Contact admin to update existing metrics')}
+          className="text-xs text-[#6e6e73] hover:text-[#1a1a1a]"
+        >
+          Clear & Re-enter
+        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-xl text-sm text-[#6e6e73] bg-white border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 shadow-sm disabled:opacity-50 active:scale-95 transition-transform"
+          >
+            {saving ? 'Saving...' : 'Save Metrics'}
+          </button>
+        </div>
+      </div>
+    </form>
   )
 }
 
 export default function Finance() {
+  const { isAdmin, isFinance } = useAuth()
+  const canEditMetrics = isAdmin || isFinance
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>('')
   const [showPeriod, setShowPeriod] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
+  const [formOpen, setFormOpen] = useState(false)
+  const [saveMessage, setSaveMessage] = useState('')
 
   const { data: periodsData, isLoading: periodsLoading } = useQuery({
     queryKey: ['financial-periods'],
@@ -333,11 +348,11 @@ export default function Finance() {
   }
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-5">
+    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-[#1a1a1a]">Finance</h2>
-          <p className="text-xs text-[#6e6e73] mt-0.5">
+          <h2 className="text-2xl font-semibold text-[#1a1a1a]">Finance</h2>
+          <p className="text-xs text-[#aeaeb2] mt-0.5">
             {selectedPeriod ? `Period: ${selectedPeriod.label}` : 'Financial metrics and documents'}
           </p>
         </div>
@@ -345,7 +360,7 @@ export default function Finance() {
           <button
             type="button"
             onClick={() => setShowUpload(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e5e5ea] hover:border-[#d1d1d6] hover:text-[#1a1a1a] text-[#6e6e73] text-sm font-medium rounded-xl transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e5e5ea] hover:border-[#d1d1d6] hover:text-[#1a1a1a] text-[#6e6e73] text-sm font-medium rounded-xl active:scale-95 transition-transform"
           >
             <UploadIcon />
             Upload Document
@@ -353,7 +368,7 @@ export default function Finance() {
           <button
             type="button"
             onClick={() => setShowPeriod(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl active:scale-95 transition-transform shadow-sm"
           >
             <PlusIcon />
             Add Period
@@ -368,10 +383,43 @@ export default function Finance() {
           ))}
         </div>
       ) : periods.length > 0 ? (
-        <PeriodSelector
-          periods={periods}
-          selectedId={activePeriodId}
-          onSelect={setSelectedPeriodId}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <PeriodSelector
+            periods={periods}
+            selectedId={activePeriodId}
+            onSelect={(id) => {
+              setSelectedPeriodId(id)
+              setSaveMessage('')
+            }}
+          />
+          {canEditMetrics && activePeriodId ? (
+            <button
+              type="button"
+              onClick={() => {
+                setFormOpen((open) => !open)
+                setSaveMessage('')
+              }}
+              className="px-4 py-2 bg-white border border-[#e5e5ea] hover:border-[#d1d1d6] text-[#6e6e73] hover:text-[#1a1a1a] text-sm font-medium rounded-xl transition-colors shrink-0"
+            >
+              Enter / Edit Metrics
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {saveMessage ? (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-3">
+          <p className="text-sm">{saveMessage}</p>
+        </div>
+      ) : null}
+
+      {canEditMetrics && formOpen && activePeriodId && !metricsLoading ? (
+        <MetricsEntryForm
+          periodId={activePeriodId}
+          metricMap={metricMap}
+          prefillKey={metrics.map((m) => `${m.metric_code}:${m.value}`).sort().join('|')}
+          onClose={() => setFormOpen(false)}
+          onSaved={(message) => setSaveMessage(message)}
         />
       ) : null}
 
@@ -401,7 +449,7 @@ export default function Finance() {
               return (
                 <div key={group.label} className="space-y-3">
                   <div className="flex items-center gap-3">
-                    <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">
+                    <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider border-l-2 border-l-violet-500 pl-3">
                       {group.label}
                     </p>
                     <div className="flex-1 h-px bg-[#e5e5ea]" />
@@ -420,14 +468,14 @@ export default function Finance() {
                 </div>
               )
             })
-          ) : null}
-
-          {!metricsLoading ? (
-            <MetricsEntryForm
-              periodId={activePeriodId}
-              metricMap={metricMap}
-              prefillKey={metrics.map((m) => `${m.metric_code}:${m.value}`).sort().join('|')}
-              defaultOpen={metrics.length === 0}
+          ) : !formOpen ? (
+            <EmptyState
+              title="No metrics for this period"
+              description={
+                canEditMetrics
+                  ? 'Use Enter / Edit Metrics to add income statement and balance sheet values'
+                  : 'No metrics have been entered for this period'
+              }
             />
           ) : null}
         </>

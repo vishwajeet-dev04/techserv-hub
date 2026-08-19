@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { companiesApi } from '../api/companies'
 import { getErrorMessage } from '../api/errors'
 import type { CompanyStatus } from '../types'
-import Modal, { fieldClass, labelClass } from './Modal'
+import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
 function normalizeWebsite(value: string): string {
   const trimmed = value.trim()
@@ -77,8 +77,22 @@ export default function CompanyFormModal({ open, onClose }: CompanyFormModalProp
   }
 
   return (
-    <Modal open={open} title="Add Company" onClose={handleClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal
+      open={open}
+      title="Add Company"
+      onClose={handleClose}
+      footer={
+        <>
+          <button type="button" onClick={handleClose} className={btnSecondaryClass}>
+            Cancel
+          </button>
+          <button type="submit" form="company-form" disabled={mutation.isPending} className={btnPrimaryClass}>
+            {mutation.isPending ? 'Saving...' : 'Save Company'}
+          </button>
+        </>
+      }
+    >
+      <form id="company-form" onSubmit={handleSubmit} className="space-y-4">
         {error ? (
           <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
             <p className="text-sm text-red-600">{error}</p>
@@ -86,35 +100,35 @@ export default function CompanyFormModal({ open, onClose }: CompanyFormModalProp
         ) : null}
 
         <div>
-          <label className={labelClass}>Company name</label>
-          <input className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} required />
+          <label htmlFor="company-name" className={labelClass}>Company name</label>
+          <input id="company-name" className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>Type</label>
-            <input className={fieldClass} value={companyType} onChange={(e) => setCompanyType(e.target.value)} placeholder="Private, LLP..." />
+            <label htmlFor="company-type" className={labelClass}>Type</label>
+            <input id="company-type" className={fieldClass} value={companyType} onChange={(e) => setCompanyType(e.target.value)} placeholder="Private, LLP..." />
           </div>
           <div>
-            <label className={labelClass}>Industry</label>
-            <input className={fieldClass} value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="IT, Manufacturing..." />
+            <label htmlFor="company-industry" className={labelClass}>Industry</label>
+            <input id="company-industry" className={fieldClass} value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="IT, Manufacturing..." />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>Website</label>
-            <input className={fieldClass} value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="company.com" />
+            <label htmlFor="company-website" className={labelClass}>Website</label>
+            <input id="company-website" className={fieldClass} value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="company.com" />
           </div>
           <div>
-            <label className={labelClass}>Location</label>
-            <input className={fieldClass} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Chennai" />
+            <label htmlFor="company-location" className={labelClass}>Location</label>
+            <input id="company-location" className={fieldClass} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Chennai" />
           </div>
         </div>
 
         <div>
-          <label className={labelClass}>Status</label>
-          <select className={fieldClass} value={status} onChange={(e) => setStatus(e.target.value as CompanyStatus)}>
+          <label htmlFor="company-status" className={labelClass}>Status</label>
+          <select id="company-status" className={fieldClass} value={status} onChange={(e) => setStatus(e.target.value as CompanyStatus)}>
             <option value="PROSPECT">Prospect</option>
             <option value="CUSTOMER">Customer</option>
             <option value="PARTNER">Partner</option>
@@ -123,29 +137,13 @@ export default function CompanyFormModal({ open, onClose }: CompanyFormModalProp
         </div>
 
         <div>
-          <label className={labelClass}>Notes</label>
+          <label htmlFor="company-notes" className={labelClass}>Notes</label>
           <textarea
+            id="company-notes"
             className={`${fieldClass} min-h-[80px] resize-y`}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-4 py-2 rounded-xl text-sm text-[#6e6e73] bg-white border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6]"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 shadow-sm disabled:opacity-50"
-          >
-            {mutation.isPending ? 'Saving...' : 'Save Company'}
-          </button>
         </div>
       </form>
     </Modal>

@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { usersApi } from '../api/users'
 import { getErrorMessage } from '../api/errors'
 import type { UserRole } from '../types'
-import Modal, { fieldClass, labelClass } from './Modal'
+import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
 const ROLES: { value: UserRole; label: string }[] = [
   { value: 'ADMIN', label: 'Admin' },
@@ -76,8 +76,20 @@ export default function UserFormModal({ open, onClose }: UserFormModalProps) {
   }
 
   return (
-    <Modal open={open} title="Add User" onClose={handleClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal
+      open={open}
+      title="Add User"
+      onClose={handleClose}
+      footer={
+        <>
+          <button type="button" onClick={handleClose} className={btnSecondaryClass}>Cancel</button>
+          <button type="submit" form="user-form" disabled={mutation.isPending} className={btnPrimaryClass}>
+            {mutation.isPending ? 'Saving...' : 'Save User'}
+          </button>
+        </>
+      }
+    >
+      <form id="user-form" onSubmit={handleSubmit} className="space-y-4">
         {error ? (
           <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
             <p className="text-sm text-red-600">{error}</p>
@@ -85,68 +97,29 @@ export default function UserFormModal({ open, onClose }: UserFormModalProps) {
         ) : null}
 
         <div>
-          <label className={labelClass}>Name</label>
-          <input
-            className={fieldClass}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
+          <label htmlFor="user-name" className={labelClass}>Name</label>
+          <input id="user-name" className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
 
         <div>
-          <label className={labelClass}>Email</label>
-          <input
-            type="email"
-            className={fieldClass}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
+          <label htmlFor="user-email" className={labelClass}>Email</label>
+          <input id="user-email" type="email" className={fieldClass} value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
 
         <div>
-          <label className={labelClass}>Password</label>
-          <input
-            type="password"
-            className={fieldClass}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={8}
-            required
-          />
+          <label htmlFor="user-password" className={labelClass}>Password</label>
+          <input id="user-password" type="password" className={fieldClass} value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
         </div>
 
         <div>
-          <label className={labelClass}>Role</label>
-          <select
-            className={fieldClass}
-            value={role}
-            onChange={(e) => setRole(e.target.value as UserRole)}
-          >
+          <label htmlFor="user-role" className={labelClass}>Role</label>
+          <select id="user-role" className={fieldClass} value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
             {ROLES.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </select>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-4 py-2 rounded-xl text-sm text-[#6e6e73] bg-white border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6]"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 shadow-sm disabled:opacity-50"
-          >
-            {mutation.isPending ? 'Saving...' : 'Save User'}
-          </button>
         </div>
       </form>
     </Modal>

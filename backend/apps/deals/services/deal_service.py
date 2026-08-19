@@ -1,5 +1,6 @@
 import logging
 from decimal import Decimal
+from datetime import timedelta
 from django.db.models import Q, Sum, Count
 from django.utils import timezone
 
@@ -69,7 +70,7 @@ def get_pipeline_summary() -> dict:
     ).order_by('stage')
 
     today = timezone.now().date()
-    thirty_days = today + timezone.timedelta(days=30)
+    thirty_days = today + timedelta(days=30)
     closing_soon = active_deals.filter(
         expected_close_date__gte=today,
         expected_close_date__lte=thirty_days
@@ -104,3 +105,20 @@ def set_default_probability(stage: str) -> int:
         DealStage.LOST: 0,
     }
     return defaults.get(stage, 0)
+
+
+def get_active_deals():
+    return Deal.objects.exclude(stage__in=[DealStage.WON, DealStage.LOST]).select_related('company')
+
+
+def count_overdue_deals() -> int:
+    today = timezone.now().date()
+    return get_active_deals().filter(expected_close_date__lt=today).count()
+
+
+def count_deals_closing_within(days: int = 7) -> int:
+    today = timezone.now().date()
+    return get_active_deals().filter(
+        expected_close_date__gte=today,
+        expected_close_date__lte=today + timedelta(days=days),
+    ).count()

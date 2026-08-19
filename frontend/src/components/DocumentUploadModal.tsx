@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { financeApi } from '../api/finance'
 import { getErrorMessage } from '../api/errors'
 import type { DocumentType, FinancialPeriod } from '../types'
-import Modal, { fieldClass, labelClass } from './Modal'
+import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
 interface DocumentUploadModalProps {
   open: boolean
@@ -70,8 +70,20 @@ export default function DocumentUploadModal({
   }
 
   return (
-    <Modal open={open} title="Upload Document" onClose={handleClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal
+      open={open}
+      title="Upload Document"
+      onClose={handleClose}
+      footer={
+        <>
+          <button type="button" onClick={handleClose} className={btnSecondaryClass}>Cancel</button>
+          <button type="submit" form="document-form" disabled={mutation.isPending} className={btnPrimaryClass}>
+            {mutation.isPending ? 'Uploading...' : 'Upload'}
+          </button>
+        </>
+      }
+    >
+      <form id="document-form" onSubmit={handleSubmit} className="space-y-4">
         {error ? (
           <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
             <p className="text-sm text-red-600">{error}</p>
@@ -79,8 +91,9 @@ export default function DocumentUploadModal({
         ) : null}
 
         <div>
-          <label className={labelClass}>File</label>
+          <label htmlFor="document-file" className={labelClass}>File</label>
           <input
+            id="document-file"
             type="file"
             className={`${fieldClass} file:mr-3 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-1.5 file:text-xs file:text-white`}
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
@@ -89,8 +102,9 @@ export default function DocumentUploadModal({
         </div>
 
         <div>
-          <label className={labelClass}>Document type</label>
+          <label htmlFor="document-type" className={labelClass}>Document type</label>
           <select
+            id="document-type"
             className={fieldClass}
             value={documentType}
             onChange={(e) => setDocumentType(e.target.value as DocumentType)}
@@ -105,8 +119,8 @@ export default function DocumentUploadModal({
         </div>
 
         <div>
-          <label className={labelClass}>Financial period</label>
-          <select className={fieldClass} value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
+          <label htmlFor="document-period" className={labelClass}>Financial period</label>
+          <select id="document-period" className={fieldClass} value={periodId} onChange={(e) => setPeriodId(e.target.value)}>
             <option value="">None</option>
             {periods.map((period) => (
               <option key={period.id} value={period.id}>
@@ -114,23 +128,6 @@ export default function DocumentUploadModal({
               </option>
             ))}
           </select>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-4 py-2 rounded-xl text-sm text-[#6e6e73] bg-white border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6]"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 shadow-sm disabled:opacity-50"
-          >
-            {mutation.isPending ? 'Uploading...' : 'Upload'}
-          </button>
         </div>
       </form>
     </Modal>

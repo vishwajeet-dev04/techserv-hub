@@ -4,6 +4,7 @@ from pathlib import Path
 from django.conf import settings
 from rest_framework import serializers
 from .models import FinancialPeriod, FinancialDocument, FinancialMetric, METRIC_CODES
+from .services.metric_service import update_manual_metric, validate_metric_value
 
 
 class FinancialPeriodSerializer(serializers.ModelSerializer):
@@ -91,7 +92,7 @@ class FinancialMetricSerializer(serializers.ModelSerializer):
             'source_document', 'source_reference',
             'confidence', 'is_manual', 'created_at'
         ]
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = ['id', 'created_at', 'is_manual']
 
     def validate_metric_code(self, value):
         if value not in METRIC_CODES:
@@ -99,6 +100,12 @@ class FinancialMetricSerializer(serializers.ModelSerializer):
                 f'Invalid metric code. Allowed: {", ".join(METRIC_CODES)}'
             )
         return value
+
+    def validate_value(self, value):
+        try:
+            return validate_metric_value(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
 
     def get_unique_together_validators(self):
         return []
@@ -116,6 +123,18 @@ class FinancialMetricSerializer(serializers.ModelSerializer):
         if existing:
             for key, value in validated_data.items():
                 setattr(existing, key, value)
+            existing.is_manual = True
             existing.save()
             return existing
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        validated_data.pop('financial_period', None)
+        validated_data.pop('metric_code', None)
+        validated_data.pop('source_document', None)
+        if 'currency' in validated_data:
+            instance.currency = validated_data['currency']
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        value = validated_data.get('value', instance.value)
+        return update_manual_metric(instance, value, user=user)

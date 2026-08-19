@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { dealsApi } from '../api/deals'
 import { getErrorMessage } from '../api/errors'
 import type { DealActivityType } from '../types'
-import Modal, { fieldClass, labelClass } from './Modal'
+import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
 const ACTIVITY_TYPES: { value: DealActivityType; label: string }[] = [
   { value: 'NOTE', label: 'Note' },
@@ -82,8 +82,20 @@ export default function ActivityFormModal({ open, dealId, onClose }: ActivityFor
   }
 
   return (
-    <Modal open={open} title="Add Activity" onClose={handleClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal
+      open={open}
+      title="Add Activity"
+      onClose={handleClose}
+      footer={
+        <>
+          <button type="button" onClick={handleClose} className={btnSecondaryClass}>Cancel</button>
+          <button type="submit" form="activity-form" disabled={mutation.isPending} className={btnPrimaryClass}>
+            {mutation.isPending ? 'Saving...' : 'Save Activity'}
+          </button>
+        </>
+      }
+    >
+      <form id="activity-form" onSubmit={handleSubmit} className="space-y-4">
         {error ? (
           <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
             <p className="text-sm text-red-600">{error}</p>
@@ -91,8 +103,9 @@ export default function ActivityFormModal({ open, dealId, onClose }: ActivityFor
         ) : null}
 
         <div>
-          <label className={labelClass}>Type</label>
+          <label htmlFor="activity-type" className={labelClass}>Type</label>
           <select
+            id="activity-type"
             className={fieldClass}
             value={type}
             onChange={(e) => setType(e.target.value as DealActivityType)}
@@ -106,8 +119,9 @@ export default function ActivityFormModal({ open, dealId, onClose }: ActivityFor
         </div>
 
         <div>
-          <label className={labelClass}>Subject</label>
+          <label htmlFor="activity-subject" className={labelClass}>Subject</label>
           <input
+            id="activity-subject"
             className={fieldClass}
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
@@ -116,8 +130,9 @@ export default function ActivityFormModal({ open, dealId, onClose }: ActivityFor
         </div>
 
         <div>
-          <label className={labelClass}>Description</label>
+          <label htmlFor="activity-description" className={labelClass}>Description</label>
           <textarea
+            id="activity-description"
             className={`${fieldClass} min-h-[80px] resize-y`}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -125,31 +140,15 @@ export default function ActivityFormModal({ open, dealId, onClose }: ActivityFor
         </div>
 
         <div>
-          <label className={labelClass}>Activity date</label>
+          <label htmlFor="activity-date" className={labelClass}>Activity date</label>
           <input
+            id="activity-date"
             type="date"
             className={fieldClass}
             value={activityDate}
             onChange={(e) => setActivityDate(e.target.value)}
             required
           />
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-4 py-2 rounded-xl text-sm text-[#6e6e73] bg-white border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6]"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 shadow-sm disabled:opacity-50"
-          >
-            {mutation.isPending ? 'Saving...' : 'Save Activity'}
-          </button>
         </div>
       </form>
     </Modal>

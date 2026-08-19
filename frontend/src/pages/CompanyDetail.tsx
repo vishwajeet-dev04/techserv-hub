@@ -29,6 +29,13 @@ const UsersIcon = () => (
   </svg>
 )
 
+const LinkedInIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6zM2 9h4v12H2z" />
+    <circle cx="4" cy="4" r="2" />
+  </svg>
+)
+
 const TrendingIcon = () => (
   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
     <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
@@ -120,7 +127,7 @@ function Skeleton({ className }: { className?: string }) {
 function StatusBadge({ status }: { status: CompanyStatus }) {
   const config = statusConfig[status]
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium ${config.className}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-medium ${config.className}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />
       {config.label}
     </span>
@@ -130,7 +137,7 @@ function StatusBadge({ status }: { status: CompanyStatus }) {
 function StageBadge({ stage }: { stage: DealStage }) {
   const config = stageConfig[stage]
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium ${config.className}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-medium ${config.className}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />
       {config.label}
     </span>
@@ -149,7 +156,7 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
 function EmptyBlock({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-14">
-      <div className="w-14 h-14 rounded-2xl bg-[#f5f5f7] border border-[#e5e5ea] flex items-center justify-center mb-3 text-[#aeaeb2]">
+      <div className="w-14 h-14 bg-[#f5f5f7] rounded-2xl flex items-center justify-center mb-3 text-[#aeaeb2]">
         {icon}
       </div>
       <p className="text-sm font-medium text-[#6e6e73]">{title}</p>
@@ -176,7 +183,7 @@ function ContactsTable({ contacts }: { contacts: Contact[] }) {
           {['Name', 'Designation', 'Email', 'Phone'].map((heading) => (
             <th
               key={heading}
-              className="px-5 py-3 text-left text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest"
+                      className="px-5 py-3.5 text-left text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest"
             >
               {heading}
             </th>
@@ -190,29 +197,42 @@ function ContactsTable({ contacts }: { contacts: Contact[] }) {
           const colorIndex = name.charCodeAt(0) % AVATAR_COLORS.length
           const avatarColor = AVATAR_COLORS[colorIndex] ?? AVATAR_COLORS[0]
           return (
-            <tr key={contact.id} className="border-b border-[#f5f5f7] last:border-0">
-              <td className="px-5 py-4">
+            <tr key={contact.id} className="border-b border-[#f5f5f7] last:border-0 hover:bg-[#f9f9fb] transition-colors duration-100">
+              <td className="px-5 py-3.5">
                 <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${avatarColor} flex items-center justify-center shrink-0`}>
+                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${avatarColor} flex items-center justify-center shrink-0`}>
                     <span className="text-white text-xs font-semibold">{initials}</span>
                   </div>
-                  <p className="text-sm font-medium text-[#1a1a1a]">{name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-[#1a1a1a]">{name}</p>
+                    {contact.linkedin_url ? (
+                      <a
+                        href={contact.linkedin_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="LinkedIn profile"
+                        className="text-[#aeaeb2] hover:text-violet-600 transition-colors"
+                      >
+                        <LinkedInIcon />
+                      </a>
+                    ) : null}
+                  </div>
                 </div>
               </td>
-              <td className="px-5 py-4">
-                <p className="text-sm text-[#6e6e73]">{contact.designation || '—'}</p>
+              <td className="px-5 py-3.5">
+                <p className="text-sm text-[#3a3a3c]">{contact.designation || '—'}</p>
               </td>
-              <td className="px-5 py-4">
+              <td className="px-5 py-3.5">
                 {contact.email ? (
-                  <a href={`mailto:${contact.email}`} className="text-sm text-[#6e6e73] hover:text-violet-600">
+                  <a href={`mailto:${contact.email}`} className="text-sm text-[#3a3a3c] hover:text-violet-600">
                     {contact.email}
                   </a>
                 ) : (
                   <p className="text-sm text-[#aeaeb2]">—</p>
                 )}
               </td>
-              <td className="px-5 py-4">
-                <p className="text-sm text-[#6e6e73]">{contact.phone || '—'}</p>
+              <td className="px-5 py-3.5">
+                <p className="text-sm text-[#3a3a3c]">{contact.phone || '—'}</p>
               </td>
             </tr>
           )
@@ -240,7 +260,7 @@ function DealsTable({ deals }: { deals: Deal[] }) {
           {['Deal', 'Stage', 'Value', 'Close date', 'Owner'].map((heading) => (
             <th
               key={heading}
-              className="px-5 py-3 text-left text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest"
+                      className="px-5 py-3.5 text-left text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest"
             >
               {heading}
             </th>
@@ -249,24 +269,24 @@ function DealsTable({ deals }: { deals: Deal[] }) {
       </thead>
       <tbody>
         {deals.map((deal) => (
-          <tr key={deal.id} className="border-b border-[#f5f5f7] last:border-0">
-            <td className="px-5 py-4">
+          <tr key={deal.id} className="border-b border-[#f5f5f7] last:border-0 hover:bg-[#f9f9fb] transition-colors duration-100">
+            <td className="px-5 py-3.5">
               <p className="text-sm font-medium text-[#1a1a1a]">{deal.name}</p>
             </td>
-            <td className="px-5 py-4">
+            <td className="px-5 py-3.5">
               <StageBadge stage={deal.stage} />
             </td>
-            <td className="px-5 py-4">
+            <td className="px-5 py-3.5">
               <p className="text-sm font-semibold text-[#1a1a1a]">{fmtCurrency(Number(deal.value), deal.currency || 'INR')}</p>
-              <p className="text-xs text-[#6e6e73] mt-0.5">
+              <p className="text-xs text-[#aeaeb2] mt-0.5">
                 {fmtCurrency(Number(deal.weighted_value), deal.currency || 'INR')} weighted
               </p>
             </td>
-            <td className="px-5 py-4">
-              <p className="text-sm text-[#6e6e73]">{fmtDate(deal.expected_close_date)}</p>
+            <td className="px-5 py-3.5">
+              <p className="text-sm text-[#3a3a3c]">{fmtDate(deal.expected_close_date)}</p>
             </td>
-            <td className="px-5 py-4">
-              <p className="text-sm text-[#6e6e73]">{deal.owner_name ?? '—'}</p>
+            <td className="px-5 py-3.5">
+              <p className="text-sm text-[#3a3a3c]">{deal.owner_name ?? '—'}</p>
             </td>
           </tr>
         ))}
@@ -301,6 +321,7 @@ export default function CompanyDetail() {
 
   const contacts = company?.contacts ?? []
   const deals = dealsData?.results ?? []
+  const totalDealValue = deals.reduce((sum, deal) => sum + Number(deal.value || 0), 0)
   const initials = getInitials(company?.name ?? '') || 'C'
   const colorIndex = (company?.name.charCodeAt(0) ?? 0) % AVATAR_COLORS.length
   const avatarColor = AVATAR_COLORS[colorIndex] ?? AVATAR_COLORS[0]
@@ -340,45 +361,61 @@ export default function CompanyDetail() {
   }
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-5">
-      <Link to="/business" className="text-xs text-[#6e6e73] hover:text-violet-600">
+    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
+      <Link to="/business" className="text-xs text-[#aeaeb2] hover:text-violet-600">
         ← Business
       </Link>
 
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${avatarColor} flex items-center justify-center shrink-0`}>
-            <span className="text-white text-sm font-semibold">{initials}</span>
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-[#1a1a1a]">{company.name}</h2>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <StatusBadge status={company.status} />
-              {company.industry ? <span className="text-xs text-[#6e6e73]">{company.industry}</span> : null}
-              {company.company_type ? <span className="text-xs text-[#aeaeb2]">{company.company_type}</span> : null}
+      <div className="bg-gradient-to-r from-[#f9f9fb] to-white border border-[#e5e5ea] rounded-2xl p-6 shadow-sm">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${avatarColor} flex items-center justify-center shrink-0`}>
+              <span className="text-white text-sm font-semibold">{initials}</span>
+            </div>
+            <div>
+              <h2 className="text-2xl font-semibold text-[#1a1a1a]">{company.name}</h2>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                <StatusBadge status={company.status} />
+                {company.industry ? <span className="text-xs text-[#6e6e73]">{company.industry}</span> : null}
+                {company.company_type ? <span className="text-xs text-[#aeaeb2]">{company.company_type}</span> : null}
+              </div>
             </div>
           </div>
+          {!isManagement ? (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowDeal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e5e5ea] hover:border-[#d1d1d6] text-[#6e6e73] hover:text-[#1a1a1a] text-sm font-medium rounded-xl active:scale-95 transition-transform"
+              >
+                <PlusIcon />
+                Add Deal
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowContact(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl active:scale-95 transition-transform shadow-sm"
+              >
+                <PlusIcon />
+                Add Contact
+              </button>
+            </div>
+          ) : null}
         </div>
-        {!isManagement ? (
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setShowDeal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e5e5ea] hover:border-[#d1d1d6] text-[#6e6e73] hover:text-[#1a1a1a] text-sm font-medium rounded-xl transition-colors"
-            >
-              <PlusIcon />
-              Add Deal
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowContact(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm"
-            >
-              <PlusIcon />
-              Add Contact
-            </button>
+        <div className="grid grid-cols-3 gap-4 mt-6">
+          <div className="bg-white border border-[#e5e5ea] rounded-xl p-4">
+            <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Contacts</p>
+            <p className="text-lg font-semibold text-[#1a1a1a] mt-1">{contacts.length}</p>
           </div>
-        ) : null}
+          <div className="bg-white border border-[#e5e5ea] rounded-xl p-4">
+            <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Deals</p>
+            <p className="text-lg font-semibold text-[#1a1a1a] mt-1">{dealsData?.count ?? deals.length}</p>
+          </div>
+          <div className="bg-white border border-[#e5e5ea] rounded-xl p-4">
+            <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Total deal value</p>
+            <p className="text-lg font-semibold text-[#1a1a1a] mt-1">{fmtCurrency(totalDealValue)}</p>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">

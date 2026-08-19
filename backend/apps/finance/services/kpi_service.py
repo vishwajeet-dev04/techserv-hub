@@ -2,7 +2,7 @@ import logging
 from decimal import Decimal
 from typing import Optional
 
-from apps.finance.models import FinancialMetric, FinancialPeriod
+from apps.finance.models import FinancialMetric, FinancialPeriod, PeriodType
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,16 @@ def calculate_revenue_growth(current_period_id, previous_period_id) -> Optional[
         return None
 
     return float(((current - previous) / previous) * 100)
+
+
+def monthly_revenue_equivalent(period, revenue: Decimal) -> Decimal:
+    if period is None:
+        return Decimal('0')
+    if period.period_type == PeriodType.QUARTERLY:
+        return revenue / Decimal('3')
+    if period.period_type == PeriodType.ANNUAL:
+        return revenue / Decimal('12')
+    return revenue
 
 
 def get_financial_dashboard_summary(period_id) -> dict:

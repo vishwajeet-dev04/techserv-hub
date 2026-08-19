@@ -183,10 +183,116 @@ export interface RevenueTrendPoint {
 
 export interface DashboardData {
   period: string | null
+  latest_period?: string | null
   business: CompanyStats
   pipeline: PipelineSummary
   financial: FinancialSummary
   revenue_trend: RevenueTrendPoint[]
+  active_deals_count?: number
+  overdue_deals_count?: number
+  deals_closing_this_week?: number
+}
+
+export type AlertSeverity = 'info' | 'warning' | 'critical'
+
+export interface DashboardAlert {
+  type: string
+  severity: AlertSeverity
+  title: string
+  description: string
+  count: number
+  data: Record<string, unknown>[]
+}
+
+export interface DashboardAlertsResponse {
+  alerts: DashboardAlert[]
+  total_alerts: number
+  critical_count: number
+  warning_count: number
+  info_count: number
+}
+
+export interface ReportPeriodOption {
+  id: string
+  label: string
+}
+
+export interface MonthlySummaryReport {
+  report_type: 'monthly_summary'
+  period: string | null
+  generated_at: string
+  financial: FinancialSummary
+  pipeline: PipelineSummary
+  business: CompanyStats
+  revenue_trend: RevenueTrendPoint[]
+  highlights: string[]
+  available_periods: ReportPeriodOption[]
+}
+
+export interface SalesPipelineReport {
+  report_type: 'sales_pipeline'
+  generated_at: string
+  summary: PipelineSummary
+  deals: Deal[]
+  by_owner: {
+    owner_name: string
+    deal_count: number
+    total_value: number
+    weighted_value: number
+  }[]
+  by_stage: {
+    stage: DealStage
+    count: number
+    total_value: number
+    weighted_value: number
+  }[]
+  by_company: {
+    company_name: string
+    deal_count: number
+    total_value: number
+  }[]
+}
+
+export interface FinancialReportMetrics extends FinancialSummary {
+  cost_of_goods_sold?: number
+  operating_expenses?: number
+  tax?: number
+}
+
+export interface FinancialSummaryReport {
+  report_type: 'financial_summary'
+  period: string | null
+  generated_at: string
+  metrics: FinancialReportMetrics
+  all_periods: RevenueTrendPoint[]
+  available_periods: ReportPeriodOption[]
+  ratios: {
+    profit_margin: number | null
+    receivables_to_revenue: number | null
+    debt_to_equity: number | null
+  }
+}
+
+export interface CustomerRevenueRow {
+  company_id: string
+  company_name: string
+  status: CompanyStatus
+  deal_count: number
+  total_deal_value: number
+  won_deal_value: number
+  active_deal_value: number
+}
+
+export interface CustomerRevenueReport {
+  report_type: 'customer_revenue'
+  generated_at: string
+  companies: CustomerRevenueRow[]
+  top_customers: CustomerRevenueRow[]
+  concentration_risk: {
+    top_customer_percentage: number
+    top_3_percentage: number
+    is_concentrated: boolean
+  }
 }
 
 export interface LoginRequest {

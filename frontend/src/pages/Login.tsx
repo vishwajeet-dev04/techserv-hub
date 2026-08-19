@@ -36,8 +36,8 @@ export default function Login() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Logo height={64} className="block mx-auto mb-5" />
-          <h1 className="text-xl font-semibold text-[#1a1a1a]">TechServ Hub</h1>
-          <p className="text-sm text-[#6e6e73] mt-1">Sign in to your workspace</p>
+          <h1 className="text-2xl font-semibold text-[#1a1a1a]">TechServ Hub</h1>
+          <p className="text-sm text-[#3a3a3c] mt-1">Sign in to your workspace</p>
         </div>
 
         {/* Card */}
@@ -52,38 +52,40 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-4">
 
             <div>
-              <label className="block text-xs font-medium text-[#3a3a3c] mb-1.5 uppercase tracking-wider">
+              <label htmlFor="login-email" className="block text-xs font-medium text-[#3a3a3c] mb-1.5 uppercase tracking-wider">
                 Email
               </label>
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoFocus
                 placeholder="you@techserv.ai"
-                className="w-full px-4 py-2.5 bg-white border border-[#e5e5ea] rounded-xl text-sm text-[#1a1a1a] placeholder-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all"
+                className="w-full bg-white border border-[#e5e5ea] rounded-xl px-3 py-2 text-sm text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-[#3a3a3c] mb-1.5 uppercase tracking-wider">
+              <label htmlFor="login-password" className="block text-xs font-medium text-[#3a3a3c] mb-1.5 uppercase tracking-wider">
                 Password
               </label>
               <input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 placeholder="••••••••"
-                className="w-full px-4 py-2.5 bg-white border border-[#e5e5ea] rounded-xl text-sm text-[#1a1a1a] placeholder-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 transition-all"
+                className="w-full bg-white border border-[#e5e5ea] rounded-xl px-3 py-2 text-sm text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-2 py-2.5 px-4 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl transition-all duration-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full mt-2 inline-flex items-center justify-center px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl active:scale-95 transition-transform shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Signing in...' : 'Sign in'}
             </button>

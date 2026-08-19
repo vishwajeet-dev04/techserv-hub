@@ -18,7 +18,7 @@ class PageErrorBoundary extends Component<{ children: ReactNode }, { hasError: b
       return (
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
-            <p className="text-sm text-[#6e6e73]">This page failed to load.</p>
+            <p className="text-sm font-medium text-[#6e6e73]">This page failed to load.</p>
             <button
               type="button"
               onClick={() => window.location.reload()}
@@ -98,6 +98,16 @@ const navItems: NavItem[] = [
   { label: 'Users', path: '/users', module: 'users', icon: <UsersIcon /> },
 ]
 
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0] ?? '')
+    .join('')
+    .toUpperCase()
+}
+
 export default function Layout() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -129,21 +139,18 @@ export default function Layout() {
     navigate('/login')
   }
 
+  const initials = getInitials(user?.name ?? '') || 'U'
+
   return (
-    <div className="flex h-screen bg-[#f5f5f7] text-[#1a1a1a] overflow-hidden">
-
-      {/* ── Sidebar ─────────────────────────────────────────────────── */}
-      <aside className="w-60 flex flex-col border-r border-[#e5e5ea] bg-white shadow-sm shrink-0">
-
-        {/* Logo area */}
-        <div className="px-5 py-5 border-b border-[#e5e5ea]">
+    <div className="flex h-screen bg-[#f5f5f7] text-[#1a1a1a] overflow-hidden print:h-auto print:overflow-visible">
+      <aside className="w-56 flex flex-col border-r border-[#e5e5ea] bg-white shadow-sm shrink-0 print:hidden">
+        <div className="px-5 py-5 border-b border-[#f5f5f7]">
           <Logo height={36} className="max-w-full" />
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5">
-          <p className="text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest px-3 mb-2">
-            MENU
+          <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider px-3 mb-2">
+            Menu
           </p>
           {items.map((item) => (
             <NavLink
@@ -151,9 +158,9 @@ export default function Layout() {
               to={item.path}
               end={item.path === '/'}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 ${
+                `flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors duration-150 ${
                   isActive
-                    ? 'bg-violet-50 text-violet-600 font-medium'
+                    ? 'bg-gradient-to-r from-violet-50 to-indigo-50 text-violet-600 font-medium'
                     : 'text-[#6e6e73] hover:text-[#1a1a1a] hover:bg-[#f5f5f7]'
                 }`
               }
@@ -170,17 +177,23 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* User + Logout */}
-        <div className="px-3 py-4 border-t border-[#e5e5ea] space-y-1">
+        <div className="px-3 py-4 border-t border-[#f5f5f7] space-y-1">
           {user && (
-            <div className="px-3 py-2 mb-2">
-              <p className="text-xs font-medium text-[#1a1a1a] truncate">{user.name}</p>
-              <p className="text-[10px] text-[#6e6e73] truncate">{user.role}</p>
+            <div className="flex items-center gap-3 px-3 py-2 mb-1">
+              <div className="w-8 h-8 rounded-lg bg-violet-100 text-violet-700 text-xs font-semibold flex items-center justify-center shrink-0">
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-[#1a1a1a] truncate">{user.name}</p>
+                <p className="text-xs text-[#aeaeb2] truncate">{user.role}</p>
+              </div>
             </div>
           )}
           <button
+            type="button"
+            title="Log out"
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#6e6e73] hover:text-[#1a1a1a] hover:bg-[#f5f5f7] transition-all duration-150"
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-[#6e6e73] hover:text-[#1a1a1a] hover:bg-[#f5f5f7] transition-colors duration-150"
           >
             <span className="text-[#aeaeb2]"><LogoutIcon /></span>
             <span className="font-medium">Logout</span>
@@ -188,11 +201,8 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* ── Main ────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
-
-        {/* Topbar */}
-        <header className="h-14 border-b border-[#e5e5ea] px-6 flex items-center justify-between shrink-0 bg-white">
+        <header className="h-14 border-b border-[#e5e5ea] px-6 flex items-center justify-between shrink-0 bg-white print:hidden">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             <span className="text-xs text-[#6e6e73]">Live</span>
@@ -206,18 +216,16 @@ export default function Layout() {
 
         {permissionMessage ? (
           <div className="mx-6 mt-4 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
-            <p className="text-sm text-amber-800">{permissionMessage}</p>
+            <p className="text-sm text-[#3a3a3c]">{permissionMessage}</p>
           </div>
         ) : null}
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto bg-[#f5f5f7]">
+        <main className="flex-1 overflow-y-auto bg-[#f5f5f7] print:overflow-visible">
           <PageErrorBoundary>
             <Outlet />
           </PageErrorBoundary>
         </main>
       </div>
-
     </div>
   )
 }

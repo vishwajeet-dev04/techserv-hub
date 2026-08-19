@@ -5,6 +5,7 @@ from .views import (
     FinancialDocumentListView,
     FinancialDocumentDetailView,
     FinancialMetricListCreateView,
+    FinancialMetricDetailView,
     financial_summary,
     revenue_trend,
 )
@@ -15,6 +16,7 @@ urlpatterns = [
     path('documents/', FinancialDocumentListView.as_view(), name='document-list'),
     path('documents/<uuid:pk>/', FinancialDocumentDetailView.as_view(), name='document-detail'),
     path('metrics/', FinancialMetricListCreateView.as_view(), name='metric-list-create'),
+    path('metrics/<uuid:pk>/', FinancialMetricDetailView.as_view(), name='metric-detail'),
     path('summary/', financial_summary, name='financial-summary'),
     path('trend/', revenue_trend, name='revenue-trend'),
 ]

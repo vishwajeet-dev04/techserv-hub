@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { financeApi } from '../api/finance'
 import { getErrorMessage } from '../api/errors'
 import type { PeriodType } from '../types'
-import Modal, { fieldClass, labelClass } from './Modal'
+import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
 interface PeriodFormModalProps {
   open: boolean
@@ -65,8 +65,20 @@ export default function PeriodFormModal({ open, onClose }: PeriodFormModalProps)
   }
 
   return (
-    <Modal open={open} title="Add Period" onClose={handleClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal
+      open={open}
+      title="Add Period"
+      onClose={handleClose}
+      footer={
+        <>
+          <button type="button" onClick={handleClose} className={btnSecondaryClass}>Cancel</button>
+          <button type="submit" form="period-form" disabled={mutation.isPending} className={btnPrimaryClass}>
+            {mutation.isPending ? 'Saving...' : 'Save Period'}
+          </button>
+        </>
+      }
+    >
+      <form id="period-form" onSubmit={handleSubmit} className="space-y-4">
         {error ? (
           <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
             <p className="text-sm text-red-600">{error}</p>
@@ -74,8 +86,8 @@ export default function PeriodFormModal({ open, onClose }: PeriodFormModalProps)
         ) : null}
 
         <div>
-          <label className={labelClass}>Period type</label>
-          <select className={fieldClass} value={periodType} onChange={(e) => setPeriodType(e.target.value as PeriodType)}>
+          <label htmlFor="period-type" className={labelClass}>Period type</label>
+          <select id="period-type" className={fieldClass} value={periodType} onChange={(e) => setPeriodType(e.target.value as PeriodType)}>
             <option value="MONTHLY">Monthly</option>
             <option value="QUARTERLY">Quarterly</option>
             <option value="ANNUAL">Annual</option>
@@ -83,36 +95,19 @@ export default function PeriodFormModal({ open, onClose }: PeriodFormModalProps)
         </div>
 
         <div>
-          <label className={labelClass}>Label</label>
-          <input className={fieldClass} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Aug 2026" required />
+          <label htmlFor="period-label" className={labelClass}>Label</label>
+          <input id="period-label" className={fieldClass} value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Aug 2026" required />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelClass}>Start date</label>
-            <input type="date" className={fieldClass} value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
+            <label htmlFor="period-start" className={labelClass}>Start date</label>
+            <input id="period-start" type="date" className={fieldClass} value={startDate} onChange={(e) => setStartDate(e.target.value)} required />
           </div>
           <div>
-            <label className={labelClass}>End date</label>
-            <input type="date" className={fieldClass} value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
+            <label htmlFor="period-end" className={labelClass}>End date</label>
+            <input id="period-end" type="date" className={fieldClass} value={endDate} onChange={(e) => setEndDate(e.target.value)} required />
           </div>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-4 py-2 rounded-xl text-sm text-[#6e6e73] bg-white border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6]"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={mutation.isPending}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 shadow-sm disabled:opacity-50"
-          >
-            {mutation.isPending ? 'Saving...' : 'Save Period'}
-          </button>
         </div>
       </form>
     </Modal>

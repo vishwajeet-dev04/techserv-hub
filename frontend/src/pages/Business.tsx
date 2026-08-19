@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { companiesApi } from '../api/companies'
@@ -108,7 +108,7 @@ function websiteLabel(website: string): string {
 function StatusBadge({ status }: { status: CompanyStatus }) {
   const config = statusConfig[status]
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium ${config.className}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-medium ${config.className}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />
       {config.label}
     </span>
@@ -132,7 +132,7 @@ function TableSkeleton() {
 function EmptyState({ filtered }: { filtered: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-20">
-      <div className="w-16 h-16 rounded-2xl bg-[#f5f5f7] border border-[#e5e5ea] flex items-center justify-center mb-4 text-[#aeaeb2]">
+      <div className="w-14 h-14 bg-[#f5f5f7] rounded-2xl flex items-center justify-center mb-4 text-[#aeaeb2]">
         <BuildingIcon />
       </div>
       <p className="text-sm font-medium text-[#6e6e73]">
@@ -153,26 +153,26 @@ function CompanyRow({ company }: { company: Company }) {
 
   return (
     <tr
-      className="group border-b border-[#f5f5f7] last:border-0 hover:bg-[#f9f9fb] transition-colors cursor-pointer"
+      className="group border-b border-[#f5f5f7] last:border-0 hover:bg-[#f9f9fb] transition-colors duration-100 cursor-pointer"
       onClick={() => navigate(`/business/${company.id}`)}
     >
-      <td className="px-5 py-4">
+      <td className="px-5 py-3.5">
         <div className="flex items-center gap-3">
-          <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${avatarColor} flex items-center justify-center shrink-0`}>
+          <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${avatarColor} flex items-center justify-center shrink-0`}>
             <span className="text-white text-xs font-semibold">{initials}</span>
           </div>
           <div>
             <p className="text-sm font-medium text-[#1a1a1a]">{company.name}</p>
             {company.industry ? (
-              <p className="text-xs text-[#6e6e73] mt-0.5">{company.industry}</p>
+              <p className="text-xs text-[#aeaeb2] mt-0.5">{company.industry}</p>
             ) : null}
           </div>
         </div>
       </td>
-      <td className="px-4 py-4">
+      <td className="px-5 py-3.5">
         <StatusBadge status={company.status} />
       </td>
-      <td className="px-4 py-4">
+      <td className="px-5 py-3.5">
         {company.location ? (
           <div className="flex items-center gap-1.5 text-[#6e6e73]">
             <LocationIcon />
@@ -182,7 +182,7 @@ function CompanyRow({ company }: { company: Company }) {
           <span className="text-xs text-[#aeaeb2]">—</span>
         )}
       </td>
-      <td className="px-4 py-4">
+      <td className="px-5 py-3.5">
         {company.website ? (
           <a
             href={websiteHref(company.website)}
@@ -198,14 +198,19 @@ function CompanyRow({ company }: { company: Company }) {
           <span className="text-xs text-[#aeaeb2]">—</span>
         )}
       </td>
-      <td className="px-4 py-4">
+      <td className="px-5 py-3.5">
         <div className="flex items-center gap-1.5 text-[#6e6e73]">
           <UsersIcon />
           <span className="text-xs">{company.contact_count ?? 0}</span>
         </div>
       </td>
-      <td className="px-4 py-4">
-        <span className="text-xs text-[#6e6e73]">{company.owner_name ?? '—'}</span>
+      <td className="px-5 py-3.5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs text-[#6e6e73]">{company.owner_name ?? '—'}</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#d1d1d6] opacity-0 group-hover:opacity-100 transition-opacity duration-200 shrink-0">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </div>
       </td>
     </tr>
   )
@@ -224,7 +229,7 @@ function FilterBtn({
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+      className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200 active:scale-95 ${
         active
           ? 'bg-violet-600 text-white border border-violet-600'
           : 'bg-white border border-[#e5e5ea] text-[#6e6e73] hover:border-[#d1d1d6] hover:text-[#1a1a1a]'
@@ -241,6 +246,18 @@ export default function Business() {
   const [statusFilter, setStatusFilter] = useState<CompanyStatus | ''>('')
   const [page, setPage] = useState(1)
   const [showCreate, setShowCreate] = useState(false)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        searchRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const { data, isLoading } = useQuery({
     queryKey: ['companies', search, statusFilter, page],
@@ -257,11 +274,11 @@ export default function Business() {
   const companies = data?.results ?? []
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-5">
+    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-[#1a1a1a]">Business</h2>
-          <p className="text-xs text-[#6e6e73] mt-0.5">
+          <h2 className="text-2xl font-semibold text-[#1a1a1a]">Business</h2>
+          <p className="text-xs text-[#aeaeb2] mt-0.5">
             {data ? `${data.count} companies` : 'Companies and contacts'}
           </p>
         </div>
@@ -269,7 +286,7 @@ export default function Business() {
           <button
             type="button"
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl transition-colors shadow-sm"
+            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl active:scale-95 transition-transform shadow-sm"
           >
             <PlusIcon />
             Add Company
@@ -283,6 +300,8 @@ export default function Business() {
             <SearchIcon />
           </span>
           <input
+            id="company-search"
+            ref={searchRef}
             type="text"
             placeholder="Search companies..."
             value={search}
@@ -290,8 +309,11 @@ export default function Business() {
               setSearch(e.target.value)
               setPage(1)
             }}
-            className="pl-9 pr-4 py-2 bg-white border border-[#e5e5ea] rounded-xl text-sm text-[#1a1a1a] placeholder-[#aeaeb2] focus:outline-none focus:border-violet-400 transition-colors w-64"
+            className="pl-9 pr-14 py-2 bg-white border border-[#e5e5ea] rounded-xl text-sm text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors w-72"
           />
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-[#aeaeb2] bg-[#f5f5f7] border border-[#e5e5ea] rounded-md px-1.5 py-0.5">
+            ⌘K
+          </span>
         </div>
         <div className="flex items-center gap-2">
           {STATUS_FILTERS.map((filter) => (
@@ -321,7 +343,7 @@ export default function Business() {
                   {['Company', 'Status', 'Location', 'Website', 'Contacts', 'Owner'].map((heading) => (
                     <th
                       key={heading}
-                      className="px-5 py-3 text-left text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest"
+                      className="px-5 py-3.5 text-left text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest"
                     >
                       {heading}
                     </th>
@@ -343,7 +365,7 @@ export default function Business() {
                   type="button"
                   onClick={() => setPage((p) => p - 1)}
                   disabled={!data.previous}
-                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] transition-colors"
+                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] active:scale-95 transition-transform"
                 >
                   Previous
                 </button>
@@ -351,7 +373,7 @@ export default function Business() {
                   type="button"
                   onClick={() => setPage((p) => p + 1)}
                   disabled={!data.next}
-                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] transition-colors"
+                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] active:scale-95 transition-transform"
                 >
                   Next
                 </button>

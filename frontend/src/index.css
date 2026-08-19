@@ -30,3 +30,45 @@ body,
 ::-webkit-scrollbar-thumb:hover {
   background: #aeaeb2;
 }
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes alert-border-pulse {
+  0%,
+  100% {
+    border-left-color: rgb(239 68 68);
+  }
+  50% {
+    border-left-color: rgb(252 165 165);
+  }
+}
+
+.modal-backdrop {
+  animation: backdrop-in 180ms ease-out;
+}
+
+.modal-panel {
+  animation: modal-in 180ms ease-out;
+}
+
+.alert-critical-pulse {
+  animation: alert-border-pulse 1.6s ease-in-out infinite;
+}
