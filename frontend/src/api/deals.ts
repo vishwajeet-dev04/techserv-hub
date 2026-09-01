@@ -5,6 +5,8 @@ interface DealFilters {
   search?: string
   stage?: string
   company_id?: string
+  service_pillar?: string
+  source?: string
   page?: number
   page_size?: number
 }

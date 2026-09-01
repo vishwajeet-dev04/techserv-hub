@@ -117,6 +117,8 @@ def _serialize_deal(deal) -> dict:
         'owner': str(deal.owner_id) if deal.owner_id else None,
         'owner_name': deal.owner.name if deal.owner else None,
         'source': deal.source,
+        'service_pillar': deal.service_pillar,
+        'sub_category': deal.sub_category,
         'notes': deal.notes,
         'created_at': deal.created_at.isoformat(),
         'updated_at': deal.updated_at.isoformat(),

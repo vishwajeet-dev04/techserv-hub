@@ -35,7 +35,9 @@ class DealListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'company', 'company_name', 'value', 'currency',
             'stage', 'probability', 'weighted_value',
-            'expected_close_date', 'owner', 'owner_name', 'created_at', 'updated_at'
+            'expected_close_date', 'owner', 'owner_name',
+            'source', 'service_pillar', 'sub_category',
+            'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'weighted_value', 'created_at', 'updated_at']
 
@@ -52,7 +54,8 @@ class DealDetailSerializer(serializers.ModelSerializer):
             'id', 'company', 'company_name', 'name', 'description',
             'value', 'currency', 'stage', 'probability', 'weighted_value',
             'expected_close_date', 'owner', 'owner_name',
-            'source', 'notes', 'activities', 'created_at', 'updated_at'
+            'source', 'service_pillar', 'sub_category',
+            'notes', 'activities', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'weighted_value', 'created_at', 'updated_at']
 

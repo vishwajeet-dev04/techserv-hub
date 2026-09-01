@@ -373,7 +373,9 @@ export default function DealDetail() {
         <InfoRow label="Currency" value={deal.currency || 'INR'} />
         <InfoRow label="Expected close date" value={fmtDate(deal.expected_close_date)} />
         <InfoRow label="Owner" value={deal.owner_name} />
-        <InfoRow label="Source" value={deal.source} />
+        <InfoRow label="Pipeline" value={deal.source} />
+        <InfoRow label="Service pillar" value={deal.service_pillar} />
+        <InfoRow label="Sub category" value={deal.sub_category} />
         <InfoRow label="Description" value={deal.description} />
         <InfoRow label="Notes" value={deal.notes} />
       </div>

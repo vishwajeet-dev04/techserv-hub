@@ -1,5 +1,14 @@
 from django.contrib import admin
-from .models import FinancialPeriod, FinancialDocument, FinancialMetric
+from .models import (
+    CapitalEntry,
+    CashflowEntry,
+    FinancialDocument,
+    FinancialMetric,
+    FinancialPeriod,
+    Invoice,
+    Payable,
+    PurchaseOrder,
+)
 
 
 @admin.register(FinancialPeriod)
@@ -33,3 +42,36 @@ class FinancialMetricAdmin(admin.ModelAdmin):
     search_fields = ['metric_code', 'financial_period__label']
     ordering = ['-financial_period__start_date', 'metric_code']
     raw_id_fields = ['financial_period', 'source_document', 'created_by']
+
+
+@admin.register(PurchaseOrder)
+class PurchaseOrderAdmin(admin.ModelAdmin):
+    list_display = ['po_number', 'customer_name', 'total_value', 'status', 'po_date']
+    list_filter = ['status']
+    search_fields = ['po_number', 'customer_name']
+
+
+@admin.register(Invoice)
+class InvoiceAdmin(admin.ModelAdmin):
+    list_display = ['invoice_number', 'customer_name', 'amount', 'status', 'due_date']
+    list_filter = ['status']
+    search_fields = ['invoice_number', 'customer_name']
+
+
+@admin.register(Payable)
+class PayableAdmin(admin.ModelAdmin):
+    list_display = ['vendor', 'invoice_number', 'payable_amount', 'status', 'due_date']
+    list_filter = ['status']
+    search_fields = ['vendor', 'invoice_number']
+
+
+@admin.register(CashflowEntry)
+class CashflowEntryAdmin(admin.ModelAdmin):
+    list_display = ['entry_date', 'direction', 'category', 'entity', 'amount']
+    list_filter = ['direction', 'bucket']
+
+
+@admin.register(CapitalEntry)
+class CapitalEntryAdmin(admin.ModelAdmin):
+    list_display = ['capital_type', 'counterparty', 'amount', 'entry_date', 'status']
+    list_filter = ['capital_type']

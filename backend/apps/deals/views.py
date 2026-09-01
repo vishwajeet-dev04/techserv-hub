@@ -22,6 +22,8 @@ class DealListCreateView(generics.ListCreateAPIView):
             stage=self.request.query_params.get('stage'),
             owner_id=self.request.query_params.get('owner_id'),
             company_id=self.request.query_params.get('company_id'),
+            service_pillar=self.request.query_params.get('service_pillar'),
+            source=self.request.query_params.get('source'),
         )
 
     def get_serializer_class(self):

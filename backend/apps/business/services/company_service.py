@@ -19,7 +19,15 @@ def get_company_list(
     status: str = None,
     owner_id=None,
 ) -> QuerySet:
-    qs = Company.objects.select_related('owner').prefetch_related('contacts')
+    qs = (
+        Company.objects
+        .select_related('owner')
+        .prefetch_related('contacts')
+        .annotate(
+            annotated_contact_count=Count('contacts', distinct=True),
+            annotated_deal_count=Count('deals', distinct=True),
+        )
+    )
 
     if search:
         qs = qs.filter(

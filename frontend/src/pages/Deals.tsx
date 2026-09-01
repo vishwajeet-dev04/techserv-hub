@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { dealsApi } from '../api/deals'
 import { useAuth } from '../hooks/useAuth'
 import type { Deal, DealStage } from '../types'
 import DealFormModal from '../components/DealFormModal'
+import { PipelineBoard, StageBadge } from '../components/PipelineViews'
+import { fmtCurrency, fmtDate, fmtFullCurrency, isOverdue, STAGE_ORDER, stageConfig } from '../lib/display'
 
 const SearchIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -41,102 +43,10 @@ const BuildingIcon = () => (
   </svg>
 )
 
-const stageConfig: Record<DealStage, { label: string; className: string; dot: string; bar: string }> = {
-  LEAD: {
-    label: 'Lead',
-    className: 'bg-slate-100 text-slate-600 border border-slate-200',
-    dot: 'bg-slate-500',
-    bar: 'bg-slate-400',
-  },
-  QUALIFIED: {
-    label: 'Qualified',
-    className: 'bg-blue-50 text-blue-700 border border-blue-200',
-    dot: 'bg-blue-500',
-    bar: 'bg-blue-500',
-  },
-  REQUIREMENT: {
-    label: 'Requirement',
-    className: 'bg-cyan-50 text-cyan-700 border border-cyan-200',
-    dot: 'bg-cyan-500',
-    bar: 'bg-cyan-500',
-  },
-  PROPOSAL: {
-    label: 'Proposal',
-    className: 'bg-amber-50 text-amber-700 border border-amber-200',
-    dot: 'bg-amber-500',
-    bar: 'bg-amber-500',
-  },
-  NEGOTIATION: {
-    label: 'Negotiation',
-    className: 'bg-orange-50 text-orange-700 border border-orange-200',
-    dot: 'bg-orange-500',
-    bar: 'bg-orange-500',
-  },
-  WON: {
-    label: 'Won',
-    className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-    dot: 'bg-emerald-500',
-    bar: 'bg-emerald-500',
-  },
-  LOST: {
-    label: 'Lost',
-    className: 'bg-red-50 text-red-700 border border-red-200',
-    dot: 'bg-red-500',
-    bar: 'bg-red-500',
-  },
-}
-
 const STAGE_FILTERS: { label: string; value: DealStage | '' }[] = [
   { label: 'All', value: '' },
-  { label: 'Lead', value: 'LEAD' },
-  { label: 'Qualified', value: 'QUALIFIED' },
-  { label: 'Proposal', value: 'PROPOSAL' },
-  { label: 'Negotiation', value: 'NEGOTIATION' },
-  { label: 'Won', value: 'WON' },
-  { label: 'Lost', value: 'LOST' },
+  ...STAGE_ORDER.map((stage) => ({ label: stageConfig[stage].label, value: stage })),
 ]
-
-function StageBadge({ stage }: { stage: DealStage }) {
-  const config = stageConfig[stage]
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-medium ${config.className}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${config.dot}`} />
-      {config.label}
-    </span>
-  )
-}
-
-const fmtCurrency = (n: number) =>
-  new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(n)
-
-const fmtFullCurrency = (n: number) =>
-  new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(n)
-
-const fmtDate = (d: string | null) => {
-  if (!d) return '—'
-  return new Date(d).toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
-}
-
-const isOverdue = (d: string | null) => {
-  if (!d) return false
-  const close = new Date(d)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return close < today
-}
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-[#f5f5f7] rounded-xl ${className ?? ''}`} />
@@ -171,7 +81,6 @@ function EmptyState({ filtered }: { filtered: boolean }) {
 function PipelineBar({ data }: { data: { stage: DealStage; count: number; total_value: number }[] }) {
   const total = data.reduce((sum, s) => sum + (s.total_value || 0), 0)
   if (total === 0) return null
-
   return (
     <div className="flex h-2 rounded-full overflow-hidden bg-[#f5f5f7]">
       {data.map((s) => {
@@ -197,7 +106,7 @@ function FilterBtn({ label, active, onClick }: { label: string; active: boolean;
       onClick={onClick}
       className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200 active:scale-95 ${
         active
-          ? 'bg-violet-600 text-white border border-violet-600'
+          ? 'bg-[#7C3AED] text-white border border-[#7C3AED]'
           : 'bg-white border border-[#e5e5ea] text-[#6e6e73] hover:border-[#d1d1d6] hover:text-[#1a1a1a]'
       }`}
     >
@@ -219,19 +128,21 @@ function DealRow({ deal }: { deal: Deal }) {
         <div>
           <p className="text-sm font-medium text-[#1a1a1a]">{deal.name}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-[#aeaeb2]">
-              <BuildingIcon />
-            </span>
+            <span className="text-[#aeaeb2]"><BuildingIcon /></span>
             <span className="text-xs text-[#6e6e73]">{deal.company_name}</span>
           </div>
         </div>
       </td>
       <td className="px-5 py-3.5">
+        <p className="text-xs text-[#1a1a1a]">{deal.service_pillar || '—'}</p>
+        {deal.sub_category ? <p className="text-[11px] text-[#aeaeb2] mt-0.5">{deal.sub_category}</p> : null}
+      </td>
+      <td className="px-5 py-3.5">
         <StageBadge stage={deal.stage} />
       </td>
-      <td className="px-5 py-3.5" title={fmtFullCurrency(deal.value)}>
-        <p className="text-sm font-semibold text-[#1a1a1a]">{fmtCurrency(deal.value)}</p>
-        <p className="text-xs text-[#aeaeb2] mt-0.5">{fmtCurrency(deal.weighted_value)} weighted</p>
+      <td className="px-5 py-3.5" title={fmtFullCurrency(deal.value, deal.currency)}>
+        <p className="text-sm font-semibold text-[#1a1a1a]">{fmtCurrency(deal.value, deal.currency)}</p>
+        <p className="text-xs text-[#aeaeb2] mt-0.5">{fmtCurrency(deal.weighted_value, deal.currency)} weighted</p>
       </td>
       <td className="px-5 py-3.5">
         <div className="flex items-center gap-2" title={`${deal.probability}%`}>
@@ -265,18 +176,26 @@ function DealRow({ deal }: { deal: Deal }) {
 
 export default function Deals() {
   const { isManagement } = useAuth()
+  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState<DealStage | ''>('')
+  const [pillarFilter, setPillarFilter] = useState('')
+  const [sourceFilter, setSourceFilter] = useState('')
   const [page, setPage] = useState(1)
   const [showCreate, setShowCreate] = useState(false)
+  const [view, setView] = useState<'board' | 'table'>('board')
 
+  const boardMode = view === 'board'
   const { data, isLoading } = useQuery({
-    queryKey: ['deals', search, stageFilter, page],
+    queryKey: ['deals', search, stageFilter, pillarFilter, sourceFilter, page, view],
     queryFn: () =>
       dealsApi.list({
         search: search || undefined,
         stage: stageFilter || undefined,
-        page,
+        service_pillar: pillarFilter || undefined,
+        source: sourceFilter || undefined,
+        page: boardMode ? 1 : page,
+        page_size: boardMode ? 200 : 20,
       }),
     placeholderData: (prev) => prev,
   })
@@ -286,28 +205,65 @@ export default function Deals() {
     queryFn: dealsApi.pipelineSummary,
   })
 
-  const isFiltered = Boolean(search) || Boolean(stageFilter)
+  const moveMutation = useMutation({
+    mutationFn: ({ id, stage }: { id: string; stage: DealStage }) => dealsApi.update(id, { stage }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['deals'] })
+      await queryClient.invalidateQueries({ queryKey: ['pipeline-summary'] })
+      await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+
+  const isFiltered = Boolean(search) || Boolean(stageFilter) || Boolean(pillarFilter) || Boolean(sourceFilter)
   const deals = data?.results ?? []
+  const pillars = useMemo(
+    () => (pipeline?.by_pillar ?? []).map((row) => row.name).filter((name) => name !== 'Uncategorised'),
+    [pipeline],
+  )
+  const sources = useMemo(
+    () => (pipeline?.by_source ?? []).map((row) => row.name).filter((name) => name !== 'Unspecified'),
+    [pipeline],
+  )
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-6 max-w-[1600px] mx-auto space-y-6">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-2xl font-semibold text-[#1a1a1a]">Deals</h2>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7C3AED]">Deal pipeline</p>
+          <h2 className="text-2xl font-semibold text-[#1a1a1a] mt-1">Deals</h2>
           <p className="text-xs text-[#aeaeb2] mt-0.5">
-            {data ? `${data.count} deals` : 'Pipeline and deal tracking'}
+            {data ? `${data.count} deals across services and software` : 'Pipeline and deal tracking'}
           </p>
         </div>
-        {!isManagement ? (
-          <button
-            type="button"
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl active:scale-95 transition-transform shadow-sm"
-          >
-            <PlusIcon />
-            Add Deal
-          </button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center p-1 bg-white border border-[#e5e5ea] rounded-xl">
+            {(['board', 'table'] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => {
+                  setView(item)
+                  setPage(1)
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${
+                  view === item ? 'bg-[#7C3AED] text-white' : 'text-[#6e6e73]'
+                }`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+          {!isManagement ? (
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-[#7C3AED] hover:bg-violet-700 text-white text-sm font-medium rounded-xl active:scale-95 transition-transform shadow-sm"
+            >
+              <PlusIcon />
+              Add Deal
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {pipeline ? (
@@ -317,15 +273,15 @@ export default function Deals() {
             <p className="text-xl font-semibold text-[#1a1a1a] mt-1.5">{fmtCurrency(pipeline.total_pipeline)}</p>
             <p className="text-xs text-[#aeaeb2] mt-1">{pipeline.active_deals_count} active deals</p>
           </div>
-          <div className="bg-gradient-to-br from-violet-600 to-indigo-600 border border-violet-600 shadow-sm rounded-2xl p-4">
+          <div className="bg-gradient-to-br from-violet-600 to-indigo-600 border border-violet-600 shadow-sm rounded-2xl p-4 kpi-shine">
             <p className="text-[11px] font-medium text-violet-100 uppercase tracking-widest">Weighted Pipeline</p>
             <p className="text-xl font-semibold text-white mt-1.5">{fmtCurrency(pipeline.weighted_pipeline)}</p>
             <p className="text-xs text-violet-100 mt-1">Risk adjusted</p>
           </div>
           <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-4">
-            <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">Won This Month</p>
-            <p className="text-xl font-semibold text-emerald-600 mt-1.5">{fmtCurrency(pipeline.won_this_month_value)}</p>
-            <p className="text-xs text-[#aeaeb2] mt-1">{pipeline.won_this_month_count} deals closed</p>
+            <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">Won</p>
+            <p className="text-xl font-semibold text-emerald-600 mt-1.5">{fmtCurrency(pipeline.won_value ?? pipeline.won_this_month_value)}</p>
+            <p className="text-xs text-[#aeaeb2] mt-1">{pipeline.won_count ?? pipeline.won_this_month_count} deals · {pipeline.win_rate ?? 0}% win rate</p>
           </div>
           <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-4">
             <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">Closing Soon</p>
@@ -365,13 +321,13 @@ export default function Deals() {
           </span>
           <input
             type="text"
-            placeholder="Search deals..."
+            placeholder="Search deals, companies, pillars..."
             value={search}
             onChange={(e) => {
               setSearch(e.target.value)
               setPage(1)
             }}
-            className="pl-9 pr-4 py-2 bg-white border border-[#e5e5ea] rounded-xl text-sm text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors w-64"
+            className="pl-9 pr-4 py-2 bg-white border border-[#e5e5ea] rounded-xl text-sm text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors w-72"
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -387,60 +343,106 @@ export default function Deals() {
             />
           ))}
         </div>
+        {sources.length > 0 ? (
+          <select
+            value={sourceFilter}
+            onChange={(e) => {
+              setSourceFilter(e.target.value)
+              setPage(1)
+            }}
+            className="px-3 py-1.5 rounded-xl text-xs bg-white border border-[#e5e5ea] text-[#6e6e73]"
+          >
+            <option value="">All pipelines</option>
+            {sources.map((source) => (
+              <option key={source} value={source}>{source}</option>
+            ))}
+          </select>
+        ) : null}
+        {pillars.length > 0 ? (
+          <select
+            value={pillarFilter}
+            onChange={(e) => {
+              setPillarFilter(e.target.value)
+              setPage(1)
+            }}
+            className="px-3 py-1.5 rounded-xl text-xs bg-white border border-[#e5e5ea] text-[#6e6e73]"
+          >
+            <option value="">All pillars</option>
+            {pillars.map((pillar) => (
+              <option key={pillar} value={pillar}>{pillar}</option>
+            ))}
+          </select>
+        ) : null}
       </div>
 
-      <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
-        {isLoading ? (
-          <TableSkeleton />
-        ) : !data || deals.length === 0 ? (
-          <EmptyState filtered={isFiltered} />
-        ) : (
-          <>
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-[#e5e5ea] bg-[#f9f9fb]">
-                  {['Deal', 'Stage', 'Value', 'Probability', 'Close Date', 'Owner'].map((heading) => (
-                    <th
-                      key={heading}
-                      className="px-5 py-3.5 text-left text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest"
-                    >
-                      {heading}
-                    </th>
+      {boardMode ? (
+        <div className="bg-white/70 border border-[#e5e5ea] shadow-sm rounded-2xl p-4">
+          {isLoading ? (
+            <TableSkeleton />
+          ) : deals.length === 0 ? (
+            <EmptyState filtered={isFiltered} />
+          ) : (
+            <PipelineBoard
+              deals={deals}
+              canMove={!isManagement}
+              onMove={(id, stage) => moveMutation.mutate({ id, stage })}
+            />
+          )}
+        </div>
+      ) : (
+        <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
+          {isLoading ? (
+            <TableSkeleton />
+          ) : !data || deals.length === 0 ? (
+            <EmptyState filtered={isFiltered} />
+          ) : (
+            <>
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-[#e5e5ea] bg-[#f9f9fb]">
+                    {['Deal', 'Pillar', 'Stage', 'Value', 'Probability', 'Close Date', 'Owner'].map((heading) => (
+                      <th
+                        key={heading}
+                        className="px-5 py-3.5 text-left text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest"
+                      >
+                        {heading}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.results.map((deal) => (
+                    <DealRow key={deal.id} deal={deal} />
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.results.map((deal) => (
-                  <DealRow key={deal.id} deal={deal} />
-                ))}
-              </tbody>
-            </table>
-            <div className="flex items-center justify-between px-5 py-3 border-t border-[#e5e5ea]">
-              <p className="text-xs text-[#6e6e73]">
-                Page {page} · {data.count} total
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => p - 1)}
-                  disabled={!data.previous}
-                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] transition-colors"
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPage((p) => p + 1)}
-                  disabled={!data.next}
-                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] transition-colors"
-                >
-                  Next
-                </button>
+                </tbody>
+              </table>
+              <div className="flex items-center justify-between px-5 py-3 border-t border-[#e5e5ea]">
+                <p className="text-xs text-[#6e6e73]">
+                  Page {page} · {data.count} total
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => p - 1)}
+                    disabled={!data.previous}
+                    className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPage((p) => p + 1)}
+                    disabled={!data.next}
+                    className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
-            </div>
-          </>
-        )}
-      </div>
+            </>
+          )}
+        </div>
+      )}
 
       <DealFormModal open={showCreate} onClose={() => setShowCreate(false)} />
     </div>

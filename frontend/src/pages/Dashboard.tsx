@@ -19,6 +19,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { FunnelChart, OwnerPerformance, PillarBreakdown } from '../components/PipelineViews'
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 const fmtCurrency = (n: number) =>
@@ -57,7 +58,7 @@ function KpiCard({
     <div
       className={`relative rounded-2xl p-5 border overflow-hidden shadow-sm transition-all duration-200 ${
         isAccent
-          ? `${gradient}`
+          ? `${gradient} kpi-shine`
           : 'bg-white border-[#e5e5ea] border-t-2 border-t-transparent hover:border-t-violet-500'
       }`}
     >
@@ -171,7 +172,16 @@ const EMPTY_PIPELINE: PipelineSummary = {
   closing_soon_count: 0,
   won_this_month_count: 0,
   won_this_month_value: 0,
+  won_count: 0,
+  won_value: 0,
+  lost_count: 0,
+  lost_value: 0,
+  win_rate: 0,
   by_stage: [],
+  funnel: [],
+  by_pillar: [],
+  by_owner: [],
+  by_source: [],
 }
 
 const severityBorder: Record<AlertSeverity, string> = {
@@ -327,8 +337,17 @@ function NeedsAttention() {
   )
 }
 
+type OpsView = 'executive' | 'pipeline' | 'team'
+
+const OPS_VIEWS: { id: OpsView; label: string }[] = [
+  { id: 'executive', label: 'Executive Summary' },
+  { id: 'pipeline', label: 'Pipeline' },
+  { id: 'team', label: 'Team Performance' },
+]
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard() {
+  const [opsView, setOpsView] = useState<OpsView>('executive')
   const { data, isLoading, isError } = useQuery<DashboardData>({
     queryKey: ['dashboard'],
     queryFn: dashboardApi.getSummary,
@@ -357,6 +376,10 @@ export default function Dashboard() {
     ...EMPTY_PIPELINE,
     ...data.pipeline,
     by_stage: data.pipeline?.by_stage ?? [],
+    funnel: data.pipeline?.funnel ?? data.pipeline?.by_stage ?? [],
+    by_pillar: data.pipeline?.by_pillar ?? [],
+    by_owner: data.pipeline?.by_owner ?? [],
+    by_source: data.pipeline?.by_source ?? [],
   }
   const business = data.business
   const revenue_trend = data.revenue_trend ?? []
@@ -364,38 +387,45 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 space-y-6 max-w-screen-xl mx-auto">
-
-      {/* ── Page Header ─────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-2xl font-semibold text-[#1a1a1a]">Dashboard</h2>
-          <p className="text-xs text-[#aeaeb2] mt-0.5">
-            {data.latest_period || period ? `Financial period: ${data.latest_period ?? period}` : 'No financial period set'}
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7C3AED]">Deal-to-Billing Ops</p>
+          <h2 className="text-2xl font-semibold text-[#1a1a1a] mt-1">Executive command</h2>
+          <p className="text-xs text-[#6e6e73] mt-1">
+            {data.latest_period || period
+              ? `Financial period: ${data.latest_period ?? period}`
+              : 'Pipeline, contracts, and team performance in one place'}
           </p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-xs">Live data</span>
         </div>
       </div>
 
-      {/* ── KPI Cards ───────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 p-1 bg-white border border-[#e5e5ea] rounded-2xl w-fit shadow-sm">
+        {OPS_VIEWS.map((view) => (
+          <button
+            key={view.id}
+            type="button"
+            onClick={() => setOpsView(view.id)}
+            className={`px-4 py-1.5 rounded-xl text-xs font-medium transition-all ${
+              opsView === view.id
+                ? 'bg-[#7C3AED] text-white shadow-sm'
+                : 'text-[#6e6e73] hover:text-[#1a1a1a]'
+            }`}
+          >
+            {view.label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard
-          label="Revenue"
-          value={fmtCurrency(financial.revenue)}
-          sub={period ?? undefined}
-          tone="revenue"
-        />
-        <KpiCard
-          label="Net Profit"
-          value={fmtCurrency(financial.net_profit)}
-          sub={typeof financial.profit_margin === 'number' ? `${financial.profit_margin.toFixed(1)}% margin` : undefined}
-        />
         <KpiCard
           label="Pipeline"
           value={fmtCurrency(pipeline.total_pipeline)}
           sub={`${pipeline.active_deals_count} active deals`}
+          tone="revenue"
         />
         <KpiCard
           label="Weighted Pipeline"
@@ -404,176 +434,138 @@ export default function Dashboard() {
           tone="weighted"
         />
         <KpiCard
-          label="Cash"
-          value={fmtCurrency(financial.cash)}
+          label="Won Value"
+          value={fmtCurrency(pipeline.won_value ?? pipeline.won_this_month_value)}
+          sub={`${pipeline.won_count ?? pipeline.won_this_month_count} closed won`}
         />
         <KpiCard
-          label="Receivables"
-          value={fmtCurrency(financial.receivables)}
-        />
-        <KpiCard
-          label="Payables"
-          value={fmtCurrency(financial.payables)}
-        />
-        <KpiCard
-          label="Closing Soon"
-          value={String(pipeline.closing_soon_count)}
-          sub="Within 30 days"
+          label="Win Rate"
+          value={`${pipeline.win_rate ?? 0}%`}
+          sub={`${pipeline.lost_count ?? 0} lost`}
         />
       </div>
 
-      {/* ── Revenue Chart + Business Stats ──────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        {/* Revenue Trend Chart */}
-        <div className="lg:col-span-2 bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
-          <SectionHeader
-            title="Revenue Trend"
-            sub="Last 6 periods"
-          />
-          {revenue_trend.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <AreaChart data={revenue_trend} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ececef" />
-                <XAxis
-                  dataKey="period"
-                  tick={{ fill: '#aeaeb2', fontSize: 11 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fill: '#aeaeb2', fontSize: 11 }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v) => fmtCurrency(v)}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke="#8b5cf6"
-                  strokeWidth={2}
-                  fill="url(#colorRevenue)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="net_profit"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  fill="url(#colorProfit)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[220px] flex items-center justify-center">
-              <p className="text-sm text-[#aeaeb2]">No financial data yet</p>
-            </div>
-          )}
-          {/* Legend */}
-          <div className="flex items-center gap-5 mt-3">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-violet-500" />
-              <span className="text-xs text-[#6e6e73]">Revenue</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-              <span className="text-xs text-[#6e6e73]">Net Profit</span>
-            </div>
+      {opsView === 'executive' ? (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <KpiCard label="Revenue" value={fmtCurrency(financial.revenue)} sub={period ?? undefined} />
+            <KpiCard
+              label="Net Profit"
+              value={fmtCurrency(financial.net_profit)}
+              sub={typeof financial.profit_margin === 'number' ? `${financial.profit_margin.toFixed(1)}% margin` : undefined}
+            />
+            <KpiCard label="Cash" value={fmtCurrency(financial.cash)} />
+            <KpiCard label="Receivables" value={fmtCurrency(financial.receivables)} />
           </div>
-        </div>
 
-        {/* Business Stats */}
-        <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
-          <SectionHeader title="Business" sub="Company overview" />
-          <StatRow label="Total Companies" value={fmtNumber(business.total)} />
-          <StatRow label="Customers" value={fmtNumber(business.customers)} highlight />
-          <StatRow label="Prospects" value={fmtNumber(business.prospects)} />
-          <StatRow label="Partners" value={fmtNumber(business.partners)} />
-          <StatRow label="Inactive" value={fmtNumber(business.inactive)} />
-
-          <div className="mt-5 pt-4 border-t border-[#f5f5f7]">
-            <SectionHeader title="Finance" />
-            <StatRow label="Gross Profit" value={fmtCurrency(financial.gross_profit)} />
-            <StatRow label="Expenses" value={fmtCurrency(financial.expenses)} />
-            <StatRow label="Equity" value={fmtCurrency(financial.equity)} />
-          </div>
-        </div>
-
-      </div>
-
-      {/* ── Pipeline by Stage ────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-        {/* Stage Breakdown */}
-        <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
-          <SectionHeader title="Pipeline by Stage" sub="Active deals breakdown" />
-          {pipeline.by_stage.length > 0 ? (
-            <div className="space-y-2.5">
-              {pipeline.by_stage.map((s) => (
-                <div key={s.stage} className="flex items-center justify-between py-1">
-                  <div className="flex items-center gap-3">
-                    <StageBadge stage={s.stage} />
-                    <span className="text-xs text-[#6e6e73]">{s.count} deals</span>
-                  </div>
-                  <span className="text-sm font-medium text-[#1a1a1a]">
-                    {fmtCurrency(s.total_value || 0)}
-                  </span>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
+              <SectionHeader title="Revenue Trend" sub="Last 6 periods" />
+              {revenue_trend.length > 0 ? (
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={revenue_trend} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="colorProfit" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ececef" />
+                    <XAxis dataKey="period" tick={{ fill: '#aeaeb2', fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: '#aeaeb2', fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtCurrency(v)} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Area type="monotone" dataKey="revenue" stroke="#8b5cf6" strokeWidth={2} fill="url(#colorRevenue)" />
+                    <Area type="monotone" dataKey="net_profit" stroke="#10b981" strokeWidth={2} fill="url(#colorProfit)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-[220px] flex items-center justify-center">
+                  <p className="text-sm text-[#aeaeb2]">No financial data yet</p>
                 </div>
-              ))}
+              )}
+              <div className="flex items-center gap-5 mt-3">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-violet-500" />
+                  <span className="text-xs text-[#6e6e73]">Revenue</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                  <span className="text-xs text-[#6e6e73]">Net Profit</span>
+                </div>
+              </div>
             </div>
-          ) : (
-            <p className="text-sm text-[#aeaeb2] py-4">No active deals</p>
-          )}
-        </div>
 
-        {/* Won This Month + Financial Position */}
-        <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
-          <SectionHeader title="This Month" sub="Performance snapshot" />
-          <StatRow
-            label="Won This Month"
-            value={fmtNumber(pipeline.won_this_month_count)}
-            highlight
-          />
-          <StatRow
-            label="Won Value"
-            value={fmtCurrency(pipeline.won_this_month_value)}
-            highlight
-          />
-          <StatRow
-            label="Closing Soon"
-            value={`${pipeline.closing_soon_count} deals`}
-          />
-          <StatRow
-            label="Closing This Week"
-            value={`${data.deals_closing_this_week ?? 0} deals`}
-          />
-          <StatRow
-            label="Overdue Deals"
-            value={`${data.overdue_deals_count ?? 0} deals`}
-          />
+            <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
+              <SectionHeader title="Business" sub="Company overview" />
+              <StatRow label="Total Companies" value={fmtNumber(business.total)} />
+              <StatRow label="Customers" value={fmtNumber(business.customers)} highlight />
+              <StatRow label="Prospects" value={fmtNumber(business.prospects)} />
+              <StatRow label="Partners" value={fmtNumber(business.partners)} />
+              <StatRow label="Inactive" value={fmtNumber(business.inactive)} />
+              <div className="mt-5 pt-4 border-t border-[#f5f5f7]">
+                <SectionHeader title="This month" />
+                <StatRow label="Won deals" value={fmtNumber(pipeline.won_this_month_count)} highlight />
+                <StatRow label="Won value" value={fmtCurrency(pipeline.won_this_month_value)} highlight />
+                <StatRow label="Closing soon" value={`${pipeline.closing_soon_count} deals`} />
+              </div>
+            </div>
+          </div>
 
-          <div className="mt-5 pt-4 border-t border-[#f5f5f7]">
-            <SectionHeader title="Balance Sheet" />
-            <StatRow label="Assets" value={fmtCurrency(financial.assets)} />
-            <StatRow label="Liabilities" value={fmtCurrency(financial.liabilities)} />
-            <StatRow label="Cash Position" value={fmtCurrency(financial.cash)} highlight />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
+              <SectionHeader title="Deals by Service Pillar" sub="Where pipeline is concentrated" />
+              <PillarBreakdown rows={pipeline.by_pillar ?? []} />
+            </div>
+            <NeedsAttention />
+          </div>
+        </>
+      ) : null}
+
+      {opsView === 'pipeline' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
+            <SectionHeader title="Sales Funnel Conversion" sub="Lead through won" />
+            <FunnelChart rows={pipeline.funnel ?? pipeline.by_stage} />
+          </div>
+          <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
+            <SectionHeader title="Pipeline by Stage" sub="Active deals breakdown" />
+            {pipeline.by_stage.length > 0 ? (
+              <div className="space-y-2.5">
+                {pipeline.by_stage.map((s) => (
+                  <div key={s.stage} className="flex items-center justify-between py-1">
+                    <div className="flex items-center gap-3">
+                      <StageBadge stage={s.stage} />
+                      <span className="text-xs text-[#6e6e73]">{s.count} deals</span>
+                    </div>
+                    <span className="text-sm font-medium text-[#1a1a1a]">{fmtCurrency(s.total_value || 0)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-[#aeaeb2] py-4">No active deals</p>
+            )}
+            {(pipeline.by_source ?? []).length > 0 ? (
+              <div className="mt-6 pt-4 border-t border-[#f5f5f7]">
+                <SectionHeader title="By pipeline" />
+                {(pipeline.by_source ?? []).map((row) => (
+                  <StatRow key={row.name} label={row.name} value={`${row.count} · ${fmtCurrency(row.total_value)}`} />
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
+      ) : null}
 
-      </div>
-
-      <NeedsAttention />
-
+      {opsView === 'team' ? (
+        <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
+          <SectionHeader title="Rep Performance Summary" sub="Weighted pipeline and win rate by owner" />
+          <OwnerPerformance rows={pipeline.by_owner ?? []} />
+        </div>
+      ) : null}
     </div>
   )
 }

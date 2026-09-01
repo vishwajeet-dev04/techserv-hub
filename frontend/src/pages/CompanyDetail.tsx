@@ -272,6 +272,9 @@ function DealsTable({ deals }: { deals: Deal[] }) {
           <tr key={deal.id} className="border-b border-[#f5f5f7] last:border-0 hover:bg-[#f9f9fb] transition-colors duration-100">
             <td className="px-5 py-3.5">
               <p className="text-sm font-medium text-[#1a1a1a]">{deal.name}</p>
+              {deal.service_pillar ? (
+                <p className="text-xs text-[#aeaeb2] mt-0.5">{deal.service_pillar}{deal.sub_category ? ` · ${deal.sub_category}` : ''}</p>
+              ) : null}
             </td>
             <td className="px-5 py-3.5">
               <StageBadge stage={deal.stage} />

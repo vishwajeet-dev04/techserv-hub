@@ -8,6 +8,17 @@ from .views import (
     FinancialMetricDetailView,
     financial_summary,
     revenue_trend,
+    ops_summary,
+    PurchaseOrderListCreateView,
+    PurchaseOrderDetailView,
+    InvoiceListCreateView,
+    InvoiceDetailView,
+    PayableListCreateView,
+    PayableDetailView,
+    CashflowEntryListCreateView,
+    CashflowEntryDetailView,
+    CapitalEntryListCreateView,
+    CapitalEntryDetailView,
 )
 
 urlpatterns = [
@@ -19,4 +30,15 @@ urlpatterns = [
     path('metrics/<uuid:pk>/', FinancialMetricDetailView.as_view(), name='metric-detail'),
     path('summary/', financial_summary, name='financial-summary'),
     path('trend/', revenue_trend, name='revenue-trend'),
+    path('ops/summary/', ops_summary, name='ops-summary'),
+    path('purchase-orders/', PurchaseOrderListCreateView.as_view(), name='po-list'),
+    path('purchase-orders/<uuid:pk>/', PurchaseOrderDetailView.as_view(), name='po-detail'),
+    path('invoices/', InvoiceListCreateView.as_view(), name='invoice-list'),
+    path('invoices/<uuid:pk>/', InvoiceDetailView.as_view(), name='invoice-detail'),
+    path('payables/', PayableListCreateView.as_view(), name='payable-list'),
+    path('payables/<uuid:pk>/', PayableDetailView.as_view(), name='payable-detail'),
+    path('cashflow/', CashflowEntryListCreateView.as_view(), name='cashflow-list'),
+    path('cashflow/<uuid:pk>/', CashflowEntryDetailView.as_view(), name='cashflow-detail'),
+    path('capital/', CapitalEntryListCreateView.as_view(), name='capital-list'),
+    path('capital/<uuid:pk>/', CapitalEntryDetailView.as_view(), name='capital-detail'),
 ]

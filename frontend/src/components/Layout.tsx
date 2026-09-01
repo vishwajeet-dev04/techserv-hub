@@ -1,5 +1,5 @@
 import { Component, useEffect, useState, type ReactNode } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { authApi } from '../api/auth'
 import { onPermissionDenied } from '../api/permissionNotice'
@@ -60,12 +60,6 @@ const BriefcaseIcon = () => (
   </svg>
 )
 
-const ChartIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/>
-  </svg>
-)
-
 const ReportIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -93,10 +87,30 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', path: '/', module: 'dashboard', icon: <GridIcon /> },
   { label: 'Business', path: '/business', module: 'business', icon: <BuildingIcon /> },
   { label: 'Deals', path: '/deals', module: 'deals', icon: <BriefcaseIcon /> },
-  { label: 'Finance', path: '/finance', module: 'finance', icon: <ChartIcon /> },
   { label: 'Reports', path: '/reports', module: 'reports', icon: <ReportIcon /> },
   { label: 'Users', path: '/users', module: 'users', icon: <UsersIcon /> },
 ]
+
+const financeNav = {
+  main: [
+    { label: 'Dashboard', path: '/finance' },
+    { label: 'Cashflow', path: '/finance/cashflow' },
+    { label: 'Clients', path: '/finance/clients' },
+    { label: 'Payables', path: '/finance/payables' },
+    { label: 'PO Management', path: '/finance/purchase-orders' },
+    { label: 'Invoice Management', path: '/finance/invoices' },
+  ],
+  capital: [
+    { label: 'Investments Received', path: '/finance/capital/investments-received' },
+    { label: 'Investments Made', path: '/finance/capital/investments-made' },
+    { label: 'Loans Provided', path: '/finance/capital/loans-provided' },
+    { label: 'Loans Taken', path: '/finance/capital/loans-taken' },
+  ],
+  system: [
+    { label: 'Reports', path: '/reports' },
+    { label: 'Settings', path: '/finance/settings' },
+  ],
+}
 
 function getInitials(name: string): string {
   return name
@@ -110,9 +124,11 @@ function getInitials(name: string): string {
 
 export default function Layout() {
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const { user, hasAccess, isLoading } = useAuth()
   const [permissionMessage, setPermissionMessage] = useState('')
+  const techpay = location.pathname.startsWith('/finance')
 
   useEffect(() => {
     return onPermissionDenied((message) => setPermissionMessage(message))
@@ -148,34 +164,63 @@ export default function Layout() {
           <Logo height={36} className="max-w-full" />
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
-          <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider px-3 mb-2">
-            Menu
-          </p>
-          {items.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors duration-150 ${
-                  isActive
-                    ? 'bg-gradient-to-r from-violet-50 to-indigo-50 text-violet-600 font-medium'
-                    : 'text-[#6e6e73] hover:text-[#1a1a1a] hover:bg-[#f5f5f7]'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <span className={isActive ? 'text-violet-600' : 'text-[#aeaeb2]'}>
-                    {item.icon}
-                  </span>
-                  <span className="font-medium">{item.label}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
-        </nav>
+        {techpay ? (
+          <nav className="flex-1 px-3 py-3 overflow-y-auto">
+            <p className="px-3 pb-3 text-[12px] font-semibold text-[#7C3AED]">TechPay Financial Control</p>
+            {(['main', 'capital', 'system'] as const).map((group) => (
+              <div key={group} className="mb-3">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#A78BFA] px-[14px] mb-1">
+                  {group}
+                </p>
+                {financeNav[group].map((item) => (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    end={item.path === '/finance'}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] border-l-[3px] ${
+                        isActive
+                          ? 'bg-[#EDE9FE] text-[#7C3AED] font-semibold border-l-[#7C3AED]'
+                          : 'text-[#6B7280] hover:bg-[#F5F3FF] border-l-transparent'
+                      }`
+                    }
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            ))}
+          </nav>
+        ) : (
+          <nav className="flex-1 px-3 py-4 space-y-0.5">
+            <p className="text-xs font-medium text-[#A78BFA] uppercase tracking-[0.12em] px-3 mb-2">
+              Deal-to-Billing Ops
+            </p>
+            {items.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.path === '/'}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-colors duration-150 border-l-[3px] ${
+                    isActive
+                      ? 'bg-[#EDE9FE] text-[#7C3AED] font-semibold border-l-[#7C3AED]'
+                      : 'text-[#6e6e73] hover:text-[#1a1a1a] hover:bg-[#F5F3FF] border-l-transparent'
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <span className={isActive ? 'text-[#7C3AED]' : 'text-[#aeaeb2]'}>
+                      {item.icon}
+                    </span>
+                    <span className="font-medium">{item.label}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </nav>
+        )}
 
         <div className="px-3 py-4 border-t border-[#f5f5f7] space-y-1">
           {user && (
@@ -203,9 +248,36 @@ export default function Layout() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="h-14 border-b border-[#e5e5ea] px-6 flex items-center justify-between shrink-0 bg-white print:hidden">
-          <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span className="text-xs text-[#6e6e73]">Live</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
+                location.pathname === '/' ? 'bg-[#EDE9FE] text-[#7C3AED]' : 'text-[#6e6e73] hover:text-[#1a1a1a]'
+              }`}
+            >
+              Home
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/deals')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
+                !techpay && location.pathname !== '/' ? 'bg-[#EDE9FE] text-[#7C3AED]' : 'text-[#6e6e73] hover:text-[#1a1a1a]'
+              }`}
+            >
+              Deal-to-Billing Ops
+            </button>
+            {hasAccess('finance') ? (
+              <button
+                type="button"
+                onClick={() => navigate('/finance')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
+                  techpay ? 'bg-[#EDE9FE] text-[#7C3AED]' : 'text-[#6e6e73] hover:text-[#1a1a1a]'
+                }`}
+              >
+                TechPay Financial Control
+              </button>
+            ) : null}
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-[#aeaeb2] font-mono">
@@ -220,7 +292,7 @@ export default function Layout() {
           </div>
         ) : null}
 
-        <main className="flex-1 overflow-y-auto bg-[#f5f5f7] print:overflow-visible">
+        <main className="flex-1 overflow-y-auto bg-[#f5f5f7] app-canvas print:overflow-visible">
           <PageErrorBoundary>
             <Outlet />
           </PageErrorBoundary>

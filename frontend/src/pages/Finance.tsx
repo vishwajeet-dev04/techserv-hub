@@ -1,493 +1,191 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { financeApi } from '../api/finance'
-import { getErrorMessage } from '../api/errors'
-import { useAuth } from '../hooks/useAuth'
-import type { FinancialPeriod, FinancialMetric } from '../types'
-import PeriodFormModal from '../components/PeriodFormModal'
-import DocumentUploadModal from '../components/DocumentUploadModal'
+import type { OpsInvoiceRow, OpsSummary } from '../types'
 
-const PlusIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M12 5v14M5 12h14" />
-  </svg>
-)
-
-const UploadIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <polyline points="17 8 12 3 7 8" />
-    <line x1="12" y1="3" x2="12" y2="15" />
-  </svg>
-)
-
-const ChartIcon = () => (
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-    <path d="M3 3v18h18" />
-    <path d="M18 9l-5 5-4-4-3 3" />
-  </svg>
-)
-
-const fmtCurrency = (n: number) =>
+const fmt = (n: number) =>
   new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
     maximumFractionDigits: 0,
-  }).format(n)
+  }).format(Number(n) || 0)
 
-const metricLabels: Record<string, string> = {
-  revenue: 'Revenue',
-  expenses: 'Expenses',
-  gross_profit: 'Gross Profit',
-  operating_profit: 'Operating Profit',
-  net_profit: 'Net Profit',
-  cash: 'Cash',
-  receivables: 'Receivables',
-  payables: 'Payables',
-  assets: 'Assets',
-  liabilities: 'Liabilities',
-  equity: 'Equity',
-  cost_of_goods_sold: 'Cost of Goods Sold',
-  operating_expenses: 'Operating Expenses',
-  tax: 'Tax',
-}
-
-const metricGroups = [
-  {
-    label: 'Income Statement',
-    codes: ['revenue', 'cost_of_goods_sold', 'gross_profit', 'operating_expenses', 'operating_profit', 'tax', 'net_profit', 'expenses'],
-  },
-  {
-    label: 'Balance Sheet',
-    codes: ['cash', 'receivables', 'assets', 'payables', 'liabilities', 'equity'],
-  },
-]
-
-function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-[#f5f5f7] rounded-xl ${className ?? ''}`} />
-}
-
-function MetricCard({
-  label,
+function Kpi({
+  title,
   value,
-  isManual,
-  accent = false,
+  to,
 }: {
-  label: string
+  title: string
   value: number
-  isManual: boolean
-  accent?: boolean
-}) {
-  const isNegative = value < 0
-  return (
-    <div className={`relative rounded-2xl p-4 border shadow-sm ${
-      accent
-        ? 'bg-gradient-to-br from-violet-600 to-indigo-600 border-violet-600'
-        : 'bg-white border-[#e5e5ea]'
-    }`}>
-      <div className="flex items-start justify-between mb-3 gap-2">
-      <p className={`text-xs font-medium uppercase tracking-wider leading-tight ${accent ? 'text-violet-100' : 'text-[#6e6e73]'}`}>
-          {label}
-        </p>
-        {isManual ? (
-          <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 shrink-0">
-            <span className="text-[10px] text-emerald-700 font-medium">Manual</span>
-          </span>
-        ) : null}
-      </div>
-      <p className={`text-xl font-semibold leading-none ${
-        accent ? 'text-white' : isNegative ? 'text-red-600' : 'text-[#1a1a1a]'
-      }`}>
-        {fmtCurrency(value)}
-      </p>
-      <svg viewBox="0 0 80 24" className={`w-full h-6 mt-3 ${accent ? 'text-white/50' : isNegative ? 'text-red-300' : 'text-violet-300'}`}>
-        <path d="M0 16 C10 16 14 8 24 10 S40 20 50 12 68 6 80 10" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      </svg>
-    </div>
-  )
-}
-
-function PeriodSelector({
-  periods,
-  selectedId,
-  onSelect,
-}: {
-  periods: FinancialPeriod[]
-  selectedId: string
-  onSelect: (id: string) => void
+  to: string
 }) {
   return (
-    <div className="flex items-center gap-2 overflow-x-auto pb-1">
-      {periods.map((period) => (
-        <button
-          key={period.id}
-          type="button"
-          onClick={() => onSelect(period.id)}
-          className={`px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
-            selectedId === period.id
-              ? 'bg-violet-600 text-white border border-violet-600'
-              : 'bg-white text-[#6e6e73] border border-[#e5e5ea] hover:border-[#d1d1d6]'
-          }`}
-        >
-          {period.label}
-        </button>
-      ))}
-    </div>
+    <Link
+      to={to}
+      className="block bg-white border border-[#e5e5ea] rounded-2xl p-5 shadow-sm hover:border-violet-200 hover:shadow-md transition-all"
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-widest text-[#6e6e73]">{title}</p>
+      <p className="text-2xl font-semibold text-[#1a1a1a] mt-2 tabular-nums">{fmt(value)}</p>
+    </Link>
   )
 }
 
-function EmptyState({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 bg-white border border-[#e5e5ea] shadow-sm rounded-2xl">
-      <div className="w-14 h-14 bg-[#f5f5f7] rounded-2xl flex items-center justify-center mb-4 text-[#aeaeb2]">
-        <ChartIcon />
-      </div>
-      <p className="text-sm font-medium text-[#6e6e73]">{title}</p>
-      <p className="text-xs text-[#aeaeb2] mt-1">{description}</p>
-    </div>
-  )
-}
-
-const ALL_METRIC_CODES = metricGroups.flatMap((group) => group.codes)
-
-function emptyMetricValues(): Record<string, string> {
-  const values: Record<string, string> = {}
-  for (const code of ALL_METRIC_CODES) {
-    values[code] = ''
+function InvoiceTable({ rows }: { rows: OpsInvoiceRow[] }) {
+  if (rows.length === 0) {
+    return <p className="text-sm text-[#aeaeb2] py-4">No invoices in this bucket</p>
   }
-  return values
-}
-
-function MetricsEntryForm({
-  periodId,
-  metricMap,
-  prefillKey,
-  onClose,
-  onSaved,
-}: {
-  periodId: string
-  metricMap: Record<string, FinancialMetric>
-  prefillKey: string
-  onClose: () => void
-  onSaved: (message: string) => void
-}) {
-  const queryClient = useQueryClient()
-  const [values, setValues] = useState<Record<string, string>>(emptyMetricValues)
-  const [error, setError] = useState('')
-  const [note, setNote] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    const next = emptyMetricValues()
-    for (const code of ALL_METRIC_CODES) {
-      const existing = metricMap[code]
-      next[code] = existing != null ? String(existing.value) : ''
-    }
-    setValues(next)
-    setError('')
-    setNote('')
-    // metricMap is recreated each parent render; prefillKey fingerprints values.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodId, prefillKey])
-
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault()
-    setError('')
-    const filled = ALL_METRIC_CODES.filter((code) => values[code]?.trim())
-    if (filled.length === 0) {
-      setError('Enter at least one metric value.')
-      return
-    }
-
-    setSaving(true)
-    const failed: string[] = []
-    let saved = 0
-
-    for (const code of filled) {
-      const value = Number(values[code])
-      if (Number.isNaN(value)) {
-        failed.push(`${metricLabels[code] ?? code} (invalid number)`)
-        continue
-      }
-      try {
-        const existing = metricMap[code]
-        if (existing) {
-          await financeApi.updateMetric(existing.id, { value, currency: 'INR' })
-        } else {
-          await financeApi.createMetric({
-            financial_period: periodId,
-            metric_code: code,
-            value,
-            currency: 'INR',
-          })
-        }
-        saved += 1
-      } catch (err) {
-        failed.push(`${metricLabels[code] ?? code}: ${getErrorMessage(err, 'could not save')}`)
-      }
-    }
-
-    await queryClient.invalidateQueries({ queryKey: ['financial-metrics', periodId] })
-    await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-    await queryClient.invalidateQueries({ queryKey: ['dashboard-alerts'] })
-    setSaving(false)
-
-    if (failed.length > 0) {
-      const prefix = saved > 0 ? `Saved ${saved}. ` : ''
-      setError(`${prefix}Failed to save: ${failed.join('; ')}`)
-      return
-    }
-    onSaved(`${saved} metric${saved === 1 ? '' : 's'} saved.`)
-    onClose()
-  }
-
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-[#e5e5ea] rounded-2xl p-6 shadow-sm space-y-6">
-      {error ? (
-        <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
-      ) : null}
-      {note ? (
-        <div className="px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
-          <p className="text-sm text-amber-800">{note}</p>
-        </div>
-      ) : null}
-
-      {metricGroups.map((group, groupIndex) => (
-        <div
-          key={group.label}
-          className={groupIndex > 0 ? 'pt-5 border-t border-[#e5e5ea]' : ''}
-        >
-          <p className="text-[#6e6e73] text-xs font-semibold uppercase tracking-widest mb-3">
-            {group.label}
-          </p>
-          <div>
-            {group.codes.map((code) => (
-              <div
-                key={code}
-                className="flex items-center justify-between gap-4 py-2.5 border-b border-[#f5f5f7] last:border-0"
-              >
-                <label htmlFor={`metric-${code}`} className="text-[#3a3a3c] text-sm font-medium">
-                  {metricLabels[code] ?? code}
-                </label>
-                <input
-                  id={`metric-${code}`}
-                  type="number"
-                  step="0.01"
-                  value={values[code] ?? ''}
-                  onChange={(e) =>
-                    setValues((prev) => ({ ...prev, [code]: e.target.value }))
-                  }
-                  className="w-48 bg-white border border-[#e5e5ea] rounded-xl px-3 py-2 text-sm text-right text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors"
-                  placeholder="0.00"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      <div className="flex items-center justify-between gap-3 pt-1">
-        <button
-          type="button"
-          onClick={() => setNote('Contact admin to update existing metrics')}
-          className="text-xs text-[#6e6e73] hover:text-[#1a1a1a]"
-        >
-          Clear & Re-enter
-        </button>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-sm text-[#6e6e73] bg-white border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6]"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 shadow-sm disabled:opacity-50 active:scale-95 transition-transform"
-          >
-            {saving ? 'Saving...' : 'Save Metrics'}
-          </button>
-        </div>
-      </div>
-    </form>
+    <table className="w-full">
+      <thead>
+        <tr className="text-left text-[10px] uppercase tracking-widest text-[#aeaeb2]">
+          <th className="py-2 font-semibold">Customer</th>
+          <th className="py-2 font-semibold">Invoice</th>
+          <th className="py-2 font-semibold">Value</th>
+          <th className="py-2 font-semibold">Pending since</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.id} className="border-t border-[#f5f5f7] text-sm">
+            <td className="py-2.5 text-[#1a1a1a]">{row.customer_name}</td>
+            <td className="py-2.5 text-[#6e6e73] font-mono text-xs">{row.invoice_number}</td>
+            <td className="py-2.5 font-medium tabular-nums">{fmt(row.amount)}</td>
+            <td className="py-2.5 text-[#6e6e73]">{row.pending_since}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
 export default function Finance() {
-  const { isAdmin, isFinance } = useAuth()
-  const canEditMetrics = isAdmin || isFinance
-  const [selectedPeriodId, setSelectedPeriodId] = useState<string>('')
-  const [showPeriod, setShowPeriod] = useState(false)
-  const [showUpload, setShowUpload] = useState(false)
-  const [formOpen, setFormOpen] = useState(false)
-  const [saveMessage, setSaveMessage] = useState('')
-
-  const { data: periodsData, isLoading: periodsLoading } = useQuery({
-    queryKey: ['financial-periods'],
-    queryFn: financeApi.listPeriods,
+  const { data, isLoading, isError, refetch } = useQuery<OpsSummary>({
+    queryKey: ['finance-ops-summary'],
+    queryFn: financeApi.opsSummary,
   })
 
-  const periods: FinancialPeriod[] = periodsData?.results ?? []
-  const activePeriodId = selectedPeriodId || periods[0]?.id || ''
-  const selectedPeriod = periods.find((p) => p.id === activePeriodId)
-
-  const { data: metricsData, isLoading: metricsLoading } = useQuery({
-    queryKey: ['financial-metrics', activePeriodId],
-    queryFn: () => financeApi.listMetrics(activePeriodId),
-    enabled: Boolean(activePeriodId),
-  })
-
-  const metrics: FinancialMetric[] = metricsData?.results ?? []
-  const metricMap: Record<string, FinancialMetric> = {}
-  for (const metric of metrics) {
-    metricMap[metric.metric_code] = metric
+  if (isLoading) {
+    return (
+      <div className="p-6 max-w-[1400px] mx-auto space-y-4">
+        <div className="h-8 w-64 bg-[#ececef] rounded-xl animate-pulse" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-24 bg-[#ececef] rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      </div>
+    )
   }
 
+  if (isError || !data) {
+    return (
+      <div className="p-6">
+        <p className="text-sm text-[#aeaeb2]">Could not load TechPay data.</p>
+        <button type="button" onClick={() => refetch()} className="mt-2 text-sm text-violet-600">
+          Retry
+        </button>
+      </div>
+    )
+  }
+
+  const rec = data.receivables
+  const dueShare = rec.total > 0 ? (rec.due / rec.total) * 100 : 0
+  const overdueShare = rec.total > 0 ? (rec.overdue / rec.total) * 100 : 0
+
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-2xl font-semibold text-[#1a1a1a]">Finance</h2>
-          <p className="text-xs text-[#aeaeb2] mt-0.5">
-            {selectedPeriod ? `Period: ${selectedPeriod.label}` : 'Financial metrics and documents'}
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7C3AED]">TechPay Financial Control</p>
+          <h2 className="text-2xl font-semibold text-[#1a1a1a] mt-1">Dashboard</h2>
+          <p className="text-xs text-[#6e6e73] mt-1">
+            Cashflow, receivables, invoices, and capital · as of {data.as_of}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setShowUpload(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e5e5ea] hover:border-[#d1d1d6] hover:text-[#1a1a1a] text-[#6e6e73] text-sm font-medium rounded-xl active:scale-95 transition-transform"
+            onClick={() => refetch()}
+            className="px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-[#e5e5ea] text-[#6e6e73] hover:text-[#1a1a1a]"
           >
-            <UploadIcon />
-            Upload Document
+            Refresh Data
           </button>
-          <button
-            type="button"
-            onClick={() => setShowPeriod(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-xl active:scale-95 transition-transform shadow-sm"
+          <Link
+            to="/finance/books"
+            className="px-3 py-1.5 rounded-xl text-xs font-medium bg-white border border-[#e5e5ea] text-[#6e6e73] hover:text-[#1a1a1a]"
           >
-            <PlusIcon />
-            Add Period
-          </button>
+            Period books
+          </Link>
         </div>
       </div>
 
-      {periodsLoading ? (
-        <div className="flex gap-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-8 w-24" />
-          ))}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#A78BFA] mb-3">Revenue Overview</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Kpi title="Total PO Value" value={data.po_metrics.total_po_value} to="/finance/purchase-orders" />
+          <Kpi title="Total Invoiced" value={data.revenue_metrics.invoiced} to="/finance/invoices" />
+          <Kpi title="Open PO" value={data.po_metrics.open_po} to="/finance/purchase-orders" />
+          <Kpi title="To Be Invoiced" value={data.po_metrics.to_be_invoiced} to="/finance/invoices" />
         </div>
-      ) : periods.length > 0 ? (
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <PeriodSelector
-            periods={periods}
-            selectedId={activePeriodId}
-            onSelect={(id) => {
-              setSelectedPeriodId(id)
-              setSaveMessage('')
-            }}
-          />
-          {canEditMetrics && activePeriodId ? (
-            <button
-              type="button"
-              onClick={() => {
-                setFormOpen((open) => !open)
-                setSaveMessage('')
-              }}
-              className="px-4 py-2 bg-white border border-[#e5e5ea] hover:border-[#d1d1d6] text-[#6e6e73] hover:text-[#1a1a1a] text-sm font-medium rounded-xl transition-colors shrink-0"
-            >
-              Enter / Edit Metrics
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      </div>
 
-      {saveMessage ? (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-3">
-          <p className="text-sm">{saveMessage}</p>
-        </div>
-      ) : null}
-
-      {canEditMetrics && formOpen && activePeriodId && !metricsLoading ? (
-        <MetricsEntryForm
-          periodId={activePeriodId}
-          metricMap={metricMap}
-          prefillKey={metrics.map((m) => `${m.metric_code}:${m.value}`).sort().join('|')}
-          onClose={() => setFormOpen(false)}
-          onSaved={(message) => setSaveMessage(message)}
-        />
-      ) : null}
-
-      {!periodsLoading && periods.length === 0 ? (
-        <EmptyState
-          title="No financial periods yet"
-          description="Add a financial period and enter metrics to get started"
-        />
-      ) : null}
-
-      {activePeriodId ? (
-        <>
-          {metricsLoading ? (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <Skeleton key={i} className="h-24" />
-              ))}
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#A78BFA] mb-3">Receivables</p>
+        <div className="bg-white border border-[#e5e5ea] rounded-2xl p-5 shadow-sm space-y-5">
+          <div className="flex items-end justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-xs text-[#6e6e73]">Total Receivables</p>
+              <p className="text-3xl font-semibold text-[#1a1a1a] tabular-nums">{fmt(rec.total)}</p>
             </div>
-          ) : metrics.length > 0 ? (
-            metricGroups.map((group) => {
-              const groupMetrics = group.codes
-                .map((code) => ({ code, metric: metricMap[code] }))
-                .filter((item): item is { code: string; metric: FinancialMetric } => Boolean(item.metric))
+            <div className="text-right text-xs">
+              <p className="text-emerald-700">Due {fmt(rec.due)}</p>
+              <p className="text-red-600 mt-0.5">Overdue {fmt(rec.overdue)}</p>
+            </div>
+          </div>
+          <div className="h-2.5 rounded-full overflow-hidden flex bg-[#f5f5f7]">
+            <div className="h-full bg-emerald-500" style={{ width: `${dueShare}%` }} />
+            <div className="h-full bg-red-500" style={{ width: `${overdueShare}%` }} />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <p className="text-sm font-semibold text-[#1a1a1a]">Due (≤30 days)</p>
+              <p className="text-lg font-semibold text-emerald-700 mt-1">{fmt(rec.due)}</p>
+              <p className="text-xs text-[#6e6e73] mt-1">
+                0–7 days {fmt(rec.due_0_7)} · 8–30 days {fmt(rec.due_8_30)}
+              </p>
+              <InvoiceTable rows={rec.due_invoices} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-[#1a1a1a]">Overdue (&gt;30 days)</p>
+              <p className="text-lg font-semibold text-red-600 mt-1">{fmt(rec.overdue)}</p>
+              <p className="text-xs text-[#6e6e73] mt-1">Aging beyond one month</p>
+              <InvoiceTable rows={rec.overdue_invoices} />
+            </div>
+          </div>
+        </div>
+      </div>
 
-              if (groupMetrics.length === 0) return null
-
-              return (
-                <div key={group.label} className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider border-l-2 border-l-violet-500 pl-3">
-                      {group.label}
-                    </p>
-                    <div className="flex-1 h-px bg-[#e5e5ea]" />
-                  </div>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    {groupMetrics.map(({ code, metric }) => (
-                      <MetricCard
-                        key={code}
-                        label={metricLabels[code] ?? code}
-                        value={metric.value}
-                        isManual={metric.is_manual}
-                        accent={code === 'revenue' || code === 'net_profit'}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )
-            })
-          ) : !formOpen ? (
-            <EmptyState
-              title="No metrics for this period"
-              description={
-                canEditMetrics
-                  ? 'Use Enter / Edit Metrics to add income statement and balance sheet values'
-                  : 'No metrics have been entered for this period'
-              }
-            />
-          ) : null}
-        </>
-      ) : null}
-
-      <PeriodFormModal open={showPeriod} onClose={() => setShowPeriod(false)} />
-      <DocumentUploadModal
-        open={showUpload}
-        onClose={() => setShowUpload(false)}
-        periods={periods}
-        selectedPeriodId={activePeriodId}
-      />
+      <div>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#A78BFA] mb-3">Cash Health</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="bg-white border border-[#e5e5ea] rounded-2xl p-4 shadow-sm">
+            <p className="text-[11px] uppercase tracking-widest text-[#6e6e73]">Inflow</p>
+            <p className="text-xl font-semibold text-emerald-700 mt-1">{fmt(data.cashflow_metrics.total_inflow)}</p>
+          </div>
+          <div className="bg-white border border-[#e5e5ea] rounded-2xl p-4 shadow-sm">
+            <p className="text-[11px] uppercase tracking-widest text-[#6e6e73]">Outflow</p>
+            <p className="text-xl font-semibold text-red-600 mt-1">{fmt(data.cashflow_metrics.total_outflow)}</p>
+          </div>
+          <div className="bg-white border border-[#e5e5ea] rounded-2xl p-4 shadow-sm">
+            <p className="text-[11px] uppercase tracking-widest text-[#6e6e73]">Net movement</p>
+            <p className="text-xl font-semibold text-[#1a1a1a] mt-1">{fmt(data.cashflow_metrics.net_cash_movement)}</p>
+          </div>
+          <div className="bg-white border border-[#e5e5ea] rounded-2xl p-4 shadow-sm">
+            <p className="text-[11px] uppercase tracking-widest text-[#6e6e73]">Payables pending</p>
+            <p className="text-xl font-semibold text-amber-600 mt-1">{fmt(data.payables_pending)}</p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

@@ -106,3 +106,70 @@ class DealDetailAPITests(APITestCase):
         self.client.force_authenticate(user=None)
         response = self.client.get(f'/api/v1/deals/{self.deal.id}/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_pipeline_summary_includes_pillar_and_funnel(self):
+        self.deal.service_pillar = 'Marketing'
+        self.deal.sub_category = 'ICP/ABM'
+        self.deal.source = 'Services & Product'
+        self.deal.save()
+        Deal.objects.create(
+            company=self.company,
+            name='Won deal',
+            value=500000,
+            stage=DealStage.WON,
+            probability=100,
+            owner=self.user,
+            service_pillar='Consulting',
+            source='Services & Product',
+        )
+        Deal.objects.create(
+            company=self.company,
+            name='Lost deal',
+            value=200000,
+            stage=DealStage.LOST,
+            probability=0,
+            owner=self.user,
+            service_pillar='Marketing',
+            source='Software & AI',
+        )
+        response = self.client.get('/api/v1/deals/pipeline/summary/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.data
+        self.assertEqual(data['active_deals_count'], 1)
+        self.assertEqual(data['won_count'], 1)
+        self.assertEqual(data['lost_count'], 1)
+        self.assertEqual(data['win_rate'], 50.0)
+        pillars = {row['name']: row for row in data['by_pillar']}
+        self.assertEqual(pillars['Marketing']['count'], 2)
+        self.assertEqual(pillars['Consulting']['won_count'], 1)
+        funnel_stages = {row['stage'] for row in data['funnel']}
+        self.assertIn(DealStage.PROPOSAL, funnel_stages)
+        self.assertIn(DealStage.WON, funnel_stages)
+        self.assertIn(DealStage.LOST, funnel_stages)
+
+    def test_list_deals_filter_by_service_pillar(self):
+        self.deal.service_pillar = 'Marketing'
+        self.deal.save()
+        response = self.client.get('/api/v1/deals/', {'service_pillar': 'Marketing'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = [item['name'] for item in response.data['results']]
+        self.assertEqual(names, ['ERP rollout'])
+        self.assertEqual(response.data['results'][0]['service_pillar'], 'Marketing')
+
+
+class FunnelSheetMappingTests(APITestCase):
+    def test_status_maps_to_pipeline_stages(self):
+        from apps.deals.management.commands.seed_funnel import map_stage, parse_probability, parse_value
+
+        self.assertEqual(map_stage('Closed - PO received but project not executed'), DealStage.WON)
+        self.assertEqual(map_stage('Lost to Wizard.io'), DealStage.LOST)
+        self.assertEqual(map_stage('Proposal sent to Kush'), DealStage.PROPOSAL)
+        self.assertEqual(map_stage('KickOff Today'), DealStage.WON)
+        self.assertEqual(map_stage('Warm - Discussions Open'), DealStage.LEAD)
+
+        value, currency = parse_value('350000/month')
+        self.assertEqual(value, 4200000)
+        self.assertEqual(currency, 'INR')
+        self.assertEqual(parse_probability(0.7, DealStage.PROPOSAL), 70)
+
+

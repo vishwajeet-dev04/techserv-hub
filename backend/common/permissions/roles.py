@@ -35,6 +35,17 @@ class IsFinanceOrAbove(BasePermission):
         )
 
 
+class IsFinanceOperator(BasePermission):
+    message = 'Finance, management, or admin role required.'
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return True
+        return request.user.role in [UserRole.ADMIN, UserRole.FINANCE, UserRole.MANAGEMENT]
+
+
 class IsSalesOrAbove(BasePermission):
     message = 'Sales role or above required.'
 

@@ -29,18 +29,24 @@ class ContactSerializer(serializers.ModelSerializer):
 class CompanyListSerializer(serializers.ModelSerializer):
     owner_name = serializers.CharField(source='owner.name', read_only=True)
     contact_count = serializers.SerializerMethodField()
+    deal_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Company
         fields = [
             'id', 'name', 'company_type', 'industry', 'website',
-            'status', 'location', 'owner_name', 'contact_count',
+            'status', 'location', 'owner_name', 'contact_count', 'deal_count',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def get_contact_count(self, obj):
-        return obj.contacts.count()
+        annotated = getattr(obj, 'annotated_contact_count', None)
+        return annotated if annotated is not None else obj.contacts.count()
+
+    def get_deal_count(self, obj):
+        annotated = getattr(obj, 'annotated_deal_count', None)
+        return annotated if annotated is not None else obj.deals.count()
 
 
 class CompanyDetailSerializer(serializers.ModelSerializer):

@@ -199,6 +199,9 @@ function CompanyRow({ company }: { company: Company }) {
         )}
       </td>
       <td className="px-5 py-3.5">
+        <span className="text-xs font-medium text-[#1a1a1a]">{company.deal_count ?? 0}</span>
+      </td>
+      <td className="px-5 py-3.5">
         <div className="flex items-center gap-1.5 text-[#6e6e73]">
           <UsersIcon />
           <span className="text-xs">{company.contact_count ?? 0}</span>
@@ -277,9 +280,10 @@ export default function Business() {
     <div className="p-6 max-w-screen-xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-[#1a1a1a]">Business</h2>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7C3AED]">Accounts</p>
+          <h2 className="text-2xl font-semibold text-[#1a1a1a] mt-1">Business</h2>
           <p className="text-xs text-[#aeaeb2] mt-0.5">
-            {data ? `${data.count} companies` : 'Companies and contacts'}
+            {data ? `${data.count} companies in the TechServ funnel` : 'Companies and contacts'}
           </p>
         </div>
         {!isManagement ? (
@@ -340,7 +344,7 @@ export default function Business() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-[#e5e5ea] bg-[#f9f9fb]">
-                  {['Company', 'Status', 'Location', 'Website', 'Contacts', 'Owner'].map((heading) => (
+                  {['Company', 'Status', 'Location', 'Website', 'Deals', 'Contacts', 'Owner'].map((heading) => (
                     <th
                       key={heading}
                       className="px-5 py-3.5 text-left text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest"

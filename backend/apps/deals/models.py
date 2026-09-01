@@ -59,6 +59,8 @@ class Deal(models.Model):
         db_index=True
     )
     source = models.CharField(max_length=100, blank=True)
+    service_pillar = models.CharField(max_length=100, blank=True, db_index=True)
+    sub_category = models.CharField(max_length=150, blank=True)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -126,3 +126,18 @@ class FinancialMetricAPITests(APITestCase):
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_sales_user_can_read_ops_summary(self):
+        from apps.finance.models import PurchaseOrder, PurchaseOrderStatus
+        PurchaseOrder.objects.create(
+            po_number='PO-TEST-1',
+            customer_name='Acme',
+            total_value=Decimal('100000'),
+            status=PurchaseOrderStatus.ACTIVE,
+        )
+        self.client.force_authenticate(self.sales_user)
+        response = self.client.get('/api/v1/finance/ops/summary/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('po_metrics', response.data)
+        self.assertEqual(response.data['po_metrics']['total_po_value'], 100000.0)
+

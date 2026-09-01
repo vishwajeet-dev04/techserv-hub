@@ -16,7 +16,7 @@ const MODULE_ROLES: Record<string, UserRole[]> = {
   dashboard: ['ADMIN', 'MANAGEMENT', 'SALES', 'FINANCE', 'VIEWER'],
   business: ['ADMIN', 'MANAGEMENT', 'SALES'],
   deals: ['ADMIN', 'MANAGEMENT', 'SALES'],
-  finance: ['ADMIN', 'MANAGEMENT', 'FINANCE'],
+  finance: ['ADMIN', 'MANAGEMENT', 'SALES', 'FINANCE', 'VIEWER'],
   reports: ['ADMIN', 'MANAGEMENT', 'SALES', 'FINANCE', 'VIEWER'],
   users: ['ADMIN'],
 }

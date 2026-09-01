@@ -9,13 +9,23 @@ import CompanyDetail from './pages/CompanyDetail'
 import Deals from './pages/Deals'
 import DealDetail from './pages/DealDetail'
 import Finance from './pages/Finance'
+import FinanceBooks from './pages/FinanceBooks'
+import {
+  CapitalPage,
+  CashflowPage,
+  FinanceClientsPage,
+  FinanceSettingsPage,
+  InvoicesPage,
+  PayablesPage,
+  PurchaseOrdersPage,
+} from './pages/FinanceLedger'
 import Reports from './pages/Reports'
 import Users from './pages/Users'
 import Login from './pages/Login'
 import type { UserRole } from './types'
 
 const CRM_ROLES: UserRole[] = ['ADMIN', 'MANAGEMENT', 'SALES']
-const FINANCE_ROLES: UserRole[] = ['ADMIN', 'MANAGEMENT', 'FINANCE']
+const FINANCE_ROLES: UserRole[] = ['ADMIN', 'MANAGEMENT', 'SALES', 'FINANCE', 'VIEWER']
 const ALL_ROLES: UserRole[] = ['ADMIN', 'MANAGEMENT', 'SALES', 'FINANCE', 'VIEWER']
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -75,6 +85,70 @@ export default function App() {
             element={
               <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
                 <Finance />
+              </RoleProtectedRoute>
+            }
+          />
+          <Route
+            path="finance/books"
+            element={
+              <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
+                <FinanceBooks />
+              </RoleProtectedRoute>
+            }
+          />
+          <Route
+            path="finance/cashflow"
+            element={
+              <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
+                <CashflowPage />
+              </RoleProtectedRoute>
+            }
+          />
+          <Route
+            path="finance/clients"
+            element={
+              <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
+                <FinanceClientsPage />
+              </RoleProtectedRoute>
+            }
+          />
+          <Route
+            path="finance/payables"
+            element={
+              <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
+                <PayablesPage />
+              </RoleProtectedRoute>
+            }
+          />
+          <Route
+            path="finance/purchase-orders"
+            element={
+              <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
+                <PurchaseOrdersPage />
+              </RoleProtectedRoute>
+            }
+          />
+          <Route
+            path="finance/invoices"
+            element={
+              <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
+                <InvoicesPage />
+              </RoleProtectedRoute>
+            }
+          />
+          <Route
+            path="finance/capital/:type"
+            element={
+              <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
+                <CapitalPage />
+              </RoleProtectedRoute>
+            }
+          />
+          <Route
+            path="finance/settings"
+            element={
+              <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
+                <FinanceSettingsPage />
               </RoleProtectedRoute>
             }
           />

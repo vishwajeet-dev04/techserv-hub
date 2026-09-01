@@ -19,7 +19,9 @@ export default function DealFormModal({ open, onClose, companyId }: DealFormModa
   const [value, setValue] = useState('')
   const [stage, setStage] = useState<DealStage>('LEAD')
   const [closeDate, setCloseDate] = useState('')
-  const [source, setSource] = useState('')
+  const [source, setSource] = useState('Services & Product')
+  const [pillar, setPillar] = useState('')
+  const [subCategory, setSubCategory] = useState('')
   const [description, setDescription] = useState('')
   const [error, setError] = useState('')
 
@@ -41,7 +43,9 @@ export default function DealFormModal({ open, onClose, companyId }: DealFormModa
     setValue('')
     setStage('LEAD')
     setCloseDate('')
-    setSource('')
+    setSource('Services & Product')
+    setPillar('')
+    setSubCategory('')
     setDescription('')
     setError('')
   }
@@ -56,6 +60,8 @@ export default function DealFormModal({ open, onClose, companyId }: DealFormModa
         stage,
         expected_close_date: closeDate || null,
         source: source.trim(),
+        service_pillar: pillar.trim(),
+        sub_category: subCategory.trim(),
         description: description.trim(),
       }),
     onSuccess: async () => {
@@ -172,8 +178,35 @@ export default function DealFormModal({ open, onClose, companyId }: DealFormModa
             <input id="deal-close" type="date" className={fieldClass} value={closeDate} onChange={(e) => setCloseDate(e.target.value)} />
           </div>
           <div>
-            <label htmlFor="deal-source" className={labelClass}>Source</label>
-            <input id="deal-source" className={fieldClass} value={source} onChange={(e) => setSource(e.target.value)} placeholder="Referral, inbound..." />
+            <label htmlFor="deal-source" className={labelClass}>Pipeline</label>
+            <select id="deal-source" className={fieldClass} value={source} onChange={(e) => setSource(e.target.value)}>
+              <option value="">Select pipeline</option>
+              <option value="Services & Product">Services & Product</option>
+              <option value="Software & AI">Software & AI</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="deal-pillar" className={labelClass}>Service pillar</label>
+            <input
+              id="deal-pillar"
+              className={fieldClass}
+              value={pillar}
+              onChange={(e) => setPillar(e.target.value)}
+              placeholder="Marketing, Consulting..."
+            />
+          </div>
+          <div>
+            <label htmlFor="deal-subcategory" className={labelClass}>Sub category</label>
+            <input
+              id="deal-subcategory"
+              className={fieldClass}
+              value={subCategory}
+              onChange={(e) => setSubCategory(e.target.value)}
+              placeholder="ICP/ABM, Development..."
+            />
           </div>
         </div>
 

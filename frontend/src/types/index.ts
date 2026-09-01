@@ -36,6 +36,7 @@ export interface Company {
   owner_name: string | null
   notes: string
   contact_count?: number
+  deal_count?: number
   contacts?: Contact[]
   created_at: string
   updated_at: string
@@ -72,6 +73,8 @@ export interface Deal {
   owner: string | null
   owner_name: string | null
   source: string
+  service_pillar: string
+  sub_category: string
   notes: string
   activities?: DealActivity[]
   created_at: string
@@ -150,6 +153,23 @@ export interface CompanyStats {
   inactive: number
 }
 
+export interface PipelineStageRow {
+  stage: DealStage
+  count: number
+  total_value: number
+  weighted_value?: number
+}
+
+export interface PipelineBreakdown {
+  name: string
+  count: number
+  total_value: number
+  weighted_value: number
+  won_count: number
+  lost_count: number
+  active_count: number
+}
+
 export interface PipelineSummary {
   total_pipeline: number
   weighted_pipeline: number
@@ -157,7 +177,16 @@ export interface PipelineSummary {
   closing_soon_count: number
   won_this_month_count: number
   won_this_month_value: number
-  by_stage: { stage: DealStage; count: number; total_value: number }[]
+  won_count?: number
+  won_value?: number
+  lost_count?: number
+  lost_value?: number
+  win_rate?: number
+  by_stage: PipelineStageRow[]
+  funnel?: PipelineStageRow[]
+  by_pillar?: PipelineBreakdown[]
+  by_owner?: PipelineBreakdown[]
+  by_source?: PipelineBreakdown[]
 }
 
 export interface FinancialSummary {
@@ -300,8 +329,114 @@ export interface LoginRequest {
   password: string
 }
 
-export interface AuthTokens {
-  access: string
-  refresh: string
-  user: User
+export interface OpsInvoiceRow {
+  id: string
+  invoice_number: string
+  customer_name: string
+  amount: number
+  invoice_date: string
+  due_date: string | null
+  pending_since: string
+  days_pending: number
+}
+
+export interface OpsSummary {
+  po_metrics: { total_po_value: number; open_po: number; to_be_invoiced: number }
+  revenue_metrics: { invoiced: number }
+  receivables: {
+    total: number
+    due: number
+    due_0_7: number
+    due_8_30: number
+    overdue: number
+    due_invoices: OpsInvoiceRow[]
+    overdue_invoices: OpsInvoiceRow[]
+  }
+  cashflow_metrics: {
+    total_inflow: number
+    total_outflow: number
+    net_cash_movement: number
+    revenue_inflow: number
+    revenue_outflow: number
+    capital_inflow: number
+    capital_outflow: number
+  }
+  payables_pending: number
+  capital: Record<string, number>
+  counts: Record<string, number>
+  as_of: string
+}
+
+export interface PurchaseOrder {
+  id: string
+  po_number: string
+  company: string | null
+  company_name: string | null
+  customer_name: string
+  billing_entity: string
+  service_category: string
+  description: string
+  po_date: string | null
+  start_date: string | null
+  end_date: string | null
+  total_value: number
+  monthly_billing: number
+  billing_cycle: string
+  status: string
+  invoiced_value: number
+  notes: string
+}
+
+export interface OpsInvoice {
+  id: string
+  invoice_number: string
+  purchase_order: string | null
+  po_number: string | null
+  company: string | null
+  company_name: string | null
+  customer_name: string
+  amount: number
+  amount_received: number
+  balance: number
+  invoice_date: string
+  due_date: string | null
+  received_date: string | null
+  status: string
+  notes: string
+}
+
+export interface OpsPayable {
+  id: string
+  vendor: string
+  category: string
+  invoice_number: string
+  month_label: string
+  taxable_amount: number
+  gst_amount: number
+  total_amount: number
+  payable_amount: number
+  due_date: string | null
+  status: string
+  notes: string
+}
+
+export interface CashflowRow {
+  id: string
+  entry_date: string
+  direction: 'INFLOW' | 'OUTFLOW'
+  bucket: string
+  category: string
+  entity: string
+  amount: number
+  notes: string
+}
+
+export interface CapitalRow {
+  id: string
+  capital_type: string
+  counterparty: string
+  amount: number
+  entry_date: string
+  status: string
+  notes: string
 }

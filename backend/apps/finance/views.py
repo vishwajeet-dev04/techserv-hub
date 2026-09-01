@@ -6,14 +6,21 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import FinancialPeriod, FinancialDocument, FinancialMetric
+from .models import CapitalEntry, CashflowEntry, Invoice, Payable, PurchaseOrder
 from .serializers import (
     FinancialPeriodSerializer,
     FinancialDocumentSerializer,
     FinancialDocumentUploadSerializer,
-    FinancialMetricSerializer
+    FinancialMetricSerializer,
+    PurchaseOrderSerializer,
+    InvoiceSerializer,
+    PayableSerializer,
+    CashflowEntrySerializer,
+    CapitalEntrySerializer,
 )
 from .services.kpi_service import get_financial_dashboard_summary, get_revenue_trend
-from common.permissions.roles import IsFinanceOrAbove
+from .services.ops_service import get_ops_summary
+from common.permissions.roles import IsFinanceOperator, IsFinanceOrAbove
 
 logger = logging.getLogger(__name__)
 
@@ -110,3 +117,111 @@ def financial_summary(request):
 def revenue_trend(request):
     limit = int(request.query_params.get('limit', 6))
     return Response(get_revenue_trend(limit=limit))
+
+
+class PurchaseOrderListCreateView(generics.ListCreateAPIView):
+    serializer_class = PurchaseOrderSerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+    def get_queryset(self):
+        qs = PurchaseOrder.objects.select_related('company').prefetch_related('invoices')
+        status_filter = self.request.query_params.get('status')
+        search = self.request.query_params.get('search')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        if search:
+            qs = qs.filter(customer_name__icontains=search)
+        return qs
+
+
+class PurchaseOrderDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = PurchaseOrder.objects.select_related('company').prefetch_related('invoices')
+    serializer_class = PurchaseOrderSerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+
+class InvoiceListCreateView(generics.ListCreateAPIView):
+    serializer_class = InvoiceSerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+    def get_queryset(self):
+        qs = Invoice.objects.select_related('company', 'purchase_order')
+        status_filter = self.request.query_params.get('status')
+        search = self.request.query_params.get('search')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        if search:
+            qs = qs.filter(customer_name__icontains=search)
+        return qs
+
+
+class InvoiceDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Invoice.objects.select_related('company', 'purchase_order')
+    serializer_class = InvoiceSerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+
+class PayableListCreateView(generics.ListCreateAPIView):
+    serializer_class = PayableSerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+    def get_queryset(self):
+        qs = Payable.objects.all()
+        status_filter = self.request.query_params.get('status')
+        search = self.request.query_params.get('search')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        if search:
+            qs = qs.filter(vendor__icontains=search)
+        return qs
+
+
+class PayableDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Payable.objects.all()
+    serializer_class = PayableSerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+
+class CashflowEntryListCreateView(generics.ListCreateAPIView):
+    serializer_class = CashflowEntrySerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+    def get_queryset(self):
+        qs = CashflowEntry.objects.all()
+        direction = self.request.query_params.get('direction')
+        search = self.request.query_params.get('search')
+        if direction:
+            qs = qs.filter(direction=direction)
+        if search:
+            qs = qs.filter(category__icontains=search)
+        return qs
+
+
+class CashflowEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = CashflowEntry.objects.all()
+    serializer_class = CashflowEntrySerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+
+class CapitalEntryListCreateView(generics.ListCreateAPIView):
+    serializer_class = CapitalEntrySerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+    def get_queryset(self):
+        qs = CapitalEntry.objects.all()
+        capital_type = self.request.query_params.get('capital_type')
+        if capital_type:
+            qs = qs.filter(capital_type=capital_type)
+        return qs
+
+
+class CapitalEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = CapitalEntry.objects.all()
+    serializer_class = CapitalEntrySerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def ops_summary(request):
+    return Response(get_ops_summary())

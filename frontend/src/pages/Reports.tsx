@@ -789,7 +789,7 @@ export default function Reports() {
     <div className="p-6 max-w-screen-xl mx-auto space-y-6">
       <div className="print:hidden">
         <h2 className="text-2xl font-semibold text-[#1a1a1a]">Reports</h2>
-        <p className="text-xs text-[#aeaeb2] mt-0.5">Business and financial reports</p>
+        <p className="text-xs text-[#aeaeb2] mt-0.5">Pipeline, finance, and customer views from live data</p>
       </div>
 
       <div className="print:hidden flex items-start gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">

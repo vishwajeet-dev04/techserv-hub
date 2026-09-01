@@ -4,6 +4,13 @@ from pathlib import Path
 from django.conf import settings
 from rest_framework import serializers
 from .models import FinancialPeriod, FinancialDocument, FinancialMetric, METRIC_CODES
+from .models import (
+    CapitalEntry,
+    CashflowEntry,
+    Invoice,
+    Payable,
+    PurchaseOrder,
+)
 from .services.metric_service import update_manual_metric, validate_metric_value
 
 
@@ -138,3 +145,73 @@ class FinancialMetricSerializer(serializers.ModelSerializer):
         user = getattr(request, 'user', None)
         value = validated_data.get('value', instance.value)
         return update_manual_metric(instance, value, user=user)
+
+
+class PurchaseOrderSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source='company.name', read_only=True)
+    invoiced_value = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PurchaseOrder
+        fields = [
+            'id', 'po_number', 'company', 'company_name', 'customer_name',
+            'billing_entity', 'service_category', 'description',
+            'po_date', 'start_date', 'end_date', 'total_value',
+            'monthly_billing', 'billing_cycle', 'status', 'notes',
+            'invoiced_value', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'company_name', 'invoiced_value']
+
+    def get_invoiced_value(self, obj):
+        total = sum((inv.amount for inv in obj.invoices.all()), 0)
+        return float(total)
+
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    company_name = serializers.CharField(source='company.name', read_only=True)
+    po_number = serializers.CharField(source='purchase_order.po_number', read_only=True)
+    balance = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Invoice
+        fields = [
+            'id', 'invoice_number', 'purchase_order', 'po_number',
+            'company', 'company_name', 'customer_name', 'amount',
+            'amount_received', 'balance', 'invoice_date', 'due_date',
+            'received_date', 'status', 'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'company_name', 'po_number', 'balance']
+
+    def get_balance(self, obj):
+        return float(obj.balance)
+
+
+class PayableSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payable
+        fields = [
+            'id', 'vendor', 'category', 'invoice_number', 'month_label',
+            'taxable_amount', 'gst_amount', 'total_amount', 'payable_amount',
+            'due_date', 'status', 'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class CashflowEntrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CashflowEntry
+        fields = [
+            'id', 'entry_date', 'direction', 'bucket', 'category',
+            'entity', 'amount', 'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class CapitalEntrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CapitalEntry
+        fields = [
+            'id', 'capital_type', 'counterparty', 'amount', 'entry_date',
+            'status', 'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']

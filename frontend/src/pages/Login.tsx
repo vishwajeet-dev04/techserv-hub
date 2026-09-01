@@ -30,7 +30,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f5f5f7] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#f5f5f7] app-canvas flex items-center justify-center px-4">
       <div className="relative w-full max-w-sm">
 
         {/* Logo */}
