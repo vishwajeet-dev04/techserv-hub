@@ -157,6 +157,151 @@ class DealDetailAPITests(APITestCase):
         self.assertEqual(response.data['results'][0]['service_pillar'], 'Marketing')
 
 
+class PoWorkflowAPITests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='sales-po@test.com',
+            name='Sales User',
+            password='pass12345',
+            role=UserRole.SALES,
+        )
+        self.client.force_authenticate(self.user)
+
+    def test_create_requires_starred_fields(self):
+        response = self.client.post('/api/v1/deals/po-workflow/', {'customer_name': 'Chavans'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_create_saves_dash_po_number(self):
+        response = self.client.post(
+            '/api/v1/deals/po-workflow/',
+            {
+                'customer_name': 'New Era',
+                'billing_entity': 'India',
+                'service_pillar': 'AIDA',
+                'po_number': '-',
+                'agreement': 'Yes',
+                'billing_cycle': 'Monthly',
+                'billing_due': 'Event Specific',
+                'total_value': '200000',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['po_number'], '-')
+        self.assertEqual(response.data['customer_name'], 'New Era')
+        listed = self.client.get('/api/v1/deals/po-workflow/', {'search': 'New Era'})
+        self.assertEqual(listed.data['count'], 1)
+        self.assertEqual(listed.data['results'][0]['po_display'], 'PO-New Era')
+        self.assertEqual(listed.data['results'][0]['status'], 'Active')
+
+    def test_import_skips_star_and_empty_keeps_dash(self):
+        from io import BytesIO
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from openpyxl import Workbook, load_workbook
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = 'PO_Workflow'
+        sheet.append([
+            'Customer', 'Billing Entity', 'Service Pillar', 'PO Number', 'PO Date', 'Agreement',
+            'Start Date', 'End Date', 'Expiry', 'Total value', 'Value per Invoice', 'Billing Cycle', 'Billing Due',
+        ])
+        sheet.append(['*'] * 13)
+        sheet.append([''] * 13)
+        sheet.append([
+            'New Era', 'India', 'AIDA', '-', '-', 'Yes',
+            None, None, None, 200000, 50000, 'Monthly', 'Event Specific',
+        ])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        uploaded = SimpleUploadedFile('po.xlsx', buffer.getvalue())
+        result = self.client.post('/api/v1/deals/po-workflow/import/', {'file': uploaded}, format='multipart')
+        self.assertEqual(result.status_code, status.HTTP_200_OK, result.data)
+        self.assertEqual(result.data['created'], 1)
+        self.assertEqual(result.data['errors'], [])
+        from apps.deals.models import PoWorkflow
+        row = PoWorkflow.objects.get()
+        self.assertEqual(row.po_number, '-')
+        self.assertEqual(row.customer_name, 'New Era')
+        template = self.client.get('/api/v1/deals/po-workflow/template/')
+        self.assertEqual(template.status_code, status.HTTP_200_OK)
+        book = load_workbook(BytesIO(template.content))
+        star = [cell.value for cell in next(book.active.iter_rows(min_row=2, max_row=2))]
+        self.assertTrue(all(value == '*' for value in star[:13]))
+        exported = self.client.get('/api/v1/deals/po-workflow/export/')
+        self.assertEqual(exported.status_code, status.HTTP_200_OK)
+
+    def test_viewer_cannot_read_po_workflow(self):
+        viewer = User.objects.create_user(
+            email='view-po@test.com',
+            name='Viewer',
+            password='pass12345',
+            role=UserRole.VIEWER,
+        )
+        self.client.force_authenticate(viewer)
+        response = self.client.get('/api/v1/deals/po-workflow/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        dash = self.client.get('/api/v1/deals/po-workflow/dashboard/')
+        self.assertEqual(dash.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_dashboard_filters_and_status(self):
+        from datetime import date, timedelta
+
+        from apps.deals.models import PoWorkflow
+        from apps.business.models import Company
+
+        company = Company.objects.create(name='Chavans')
+        today = date.today()
+        PoWorkflow.objects.create(
+            company=company,
+            customer_name='Chavans',
+            billing_entity='India',
+            service_pillar='BizOps',
+            po_number='PO-2526-0048',
+            agreement='NA',
+            start_date=today - timedelta(days=400),
+            end_date=today - timedelta(days=10),
+            total_value=17100000,
+            value_per_invoice=300000,
+            billing_cycle='Monthly',
+            billing_due='1st of Month',
+        )
+        PoWorkflow.objects.create(
+            company=company,
+            customer_name='New Era',
+            billing_entity='SG',
+            service_pillar='AIDA',
+            po_number='-',
+            agreement='Yes',
+            total_value=200000,
+            value_per_invoice=50000,
+            billing_cycle='Monthly',
+            billing_due='Event Specific',
+        )
+        dash = self.client.get('/api/v1/deals/po-workflow/dashboard/')
+        self.assertEqual(dash.status_code, status.HTTP_200_OK, dash.data)
+        self.assertEqual(dash.data['kpis']['active_pos'], 1)
+        self.assertEqual(dash.data['kpis']['total_contract_value'], 17300000.0)
+        displays = {row['po_display'] for row in dash.data['rows']}
+        self.assertIn('PO-New Era', displays)
+        statuses = {row['customer_name']: row['status'] for row in dash.data['rows']}
+        self.assertEqual(statuses['Chavans'], 'Completed')
+        self.assertEqual(statuses['New Era'], 'Active')
+        india = self.client.get('/api/v1/deals/po-workflow/dashboard/', {'billing_entity': 'India'})
+        self.assertEqual(len(india.data['rows']), 1)
+        client = self.client.get('/api/v1/deals/po-workflow/dashboard/', {'customer': 'New Era'})
+        self.assertEqual(len(client.data['rows']), 1)
+        far = self.client.get('/api/v1/deals/po-workflow/dashboard/', {'from': '2099-01-01', 'to': '2099-01-31'})
+        self.assertEqual(len(far.data['rows']), 0)
+        overlap = self.client.get(
+            '/api/v1/deals/po-workflow/dashboard/',
+            {'from': (today - timedelta(days=20)).isoformat(), 'to': today.isoformat()},
+        )
+        names = {row['customer_name'] for row in overlap.data['rows']}
+        self.assertEqual(names, {'Chavans'})
+
+
 class FunnelSheetMappingTests(APITestCase):
     def test_status_maps_to_pipeline_stages(self):
         from apps.deals.management.commands.seed_funnel import map_stage, parse_probability, parse_value

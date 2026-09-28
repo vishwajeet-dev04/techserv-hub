@@ -1,450 +1,990 @@
-import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+import { ChevronDown, Eye, FileText } from 'lucide-react'
 import { dealsApi } from '../api/deals'
+import { pulseApi } from '../api/pulse'
+import { getErrorMessage } from '../api/errors'
+import { notify } from '../lib/notify'
 import { useAuth } from '../hooks/useAuth'
-import type { Deal, DealStage } from '../types'
-import DealFormModal from '../components/DealFormModal'
-import { PipelineBoard, StageBadge } from '../components/PipelineViews'
-import { fmtCurrency, fmtDate, fmtFullCurrency, isOverdue, STAGE_ORDER, stageConfig } from '../lib/display'
+import Modal, {
+  btnPrimaryClass,
+  btnRowDeleteClass,
+  btnRowEditClass,
+  btnSecondaryClass,
+  fieldClass,
+  labelClass,
+} from '../components/Modal'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
+import DocumentPreviewModal, {
+  DocumentPreviewBody,
+  type PreviewableFile,
+} from '../components/DocumentPreviewModal'
+import PulseExcelBar from '../components/PulseExcelBar'
+import { useDateRange } from '../hooks/useDateRange'
+import type {
+  PoWorkflow,
+  PoWorkflowDashboard,
+  PulseOpportunity,
+  PulseOpportunityActivity,
+  PulseOpportunityActivityAttachment,
+} from '../types'
 
-const SearchIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <circle cx="11" cy="11" r="8" />
-    <path d="m21 21-4.35-4.35" />
-  </svg>
-)
+const filterField = `${fieldClass} !w-[11rem]`
+const chartTick = { fontSize: 11, fill: 'var(--color-muted)' }
+const tooltipStyle = {
+  background: 'var(--color-surface)',
+  border: '1px solid var(--color-line)',
+  borderRadius: 12,
+  fontSize: 12,
+  boxShadow: '0 1px 2px rgb(0 0 0 / 0.06)',
+}
 
-const PlusIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M12 5v14M5 12h14" />
-  </svg>
-)
-
-const TrendingIcon = () => (
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-    <polyline points="17 6 23 6 23 12" />
-  </svg>
-)
-
-const CalendarIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-    <line x1="16" y1="2" x2="16" y2="6" />
-    <line x1="8" y1="2" x2="8" y2="6" />
-    <line x1="3" y1="10" x2="21" y2="10" />
-  </svg>
-)
-
-const BuildingIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M3 21h18M3 7v14M21 7v14M6 21V7M18 21V7M3 7l9-4 9 4M9 21v-4h6v4" />
-  </svg>
-)
-
-const STAGE_FILTERS: { label: string; value: DealStage | '' }[] = [
-  { label: 'All', value: '' },
-  ...STAGE_ORDER.map((stage) => ({ label: stageConfig[stage].label, value: stage })),
+const BILLING_ENTITIES = ['India', 'SG']
+const SERVICE_PILLARS = ['AIDA', 'FinOps', 'Loan', 'PRAS', 'BizOps', 'Sprouts', 'Consultancy']
+const AGREEMENTS = ['Yes', 'NA']
+const BILLING_CYCLES = ['Monthly', 'Quarterly', 'One-time', 'Event']
+const BILLING_DUES = [
+  'Event Specific',
+  '31st of Month',
+  '5th of Next month',
+  '1st of Month',
+  '15th of Month',
+  '15th of November',
 ]
 
-function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-[#f5f5f7] rounded-xl ${className ?? ''}`} />
+const emptyForm = {
+  customer_name: '',
+  billing_entity: '',
+  service_pillar: '',
+  po_number: '',
+  po_date: '',
+  agreement: '',
+  start_date: '',
+  end_date: '',
+  expiry: '',
+  total_value: '',
+  value_per_invoice: '',
+  billing_cycle: '',
+  billing_due: '',
+  opportunity: '',
+  prospect_number: '',
 }
 
-function TableSkeleton() {
-  return (
-    <div className="space-y-2 p-4">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <Skeleton key={i} className="h-16" />
-      ))}
-    </div>
-  )
+type FormValues = typeof emptyForm
+
+const REQUIRED: Array<[keyof FormValues, string]> = [
+  ['customer_name', 'Customer'],
+  ['billing_entity', 'Billing Entity'],
+  ['service_pillar', 'Service Pillar'],
+  ['po_number', 'PO Number'],
+  ['agreement', 'Agreement'],
+  ['billing_cycle', 'Billing Cycle'],
+  ['billing_due', 'Billing Due'],
+]
+
+function fromRow(row: PoWorkflow): FormValues {
+  return {
+    customer_name: row.customer_name,
+    billing_entity: row.billing_entity,
+    service_pillar: row.service_pillar,
+    po_number: row.po_number,
+    po_date: row.po_date ?? '',
+    agreement: row.agreement,
+    start_date: row.start_date ?? '',
+    end_date: row.end_date ?? '',
+    expiry: row.expiry ?? '',
+    total_value: row.total_value == null ? '' : String(row.total_value),
+    value_per_invoice: row.value_per_invoice == null ? '' : String(row.value_per_invoice),
+    billing_cycle: row.billing_cycle,
+    billing_due: row.billing_due,
+    opportunity: row.opportunity ?? '',
+    prospect_number: row.opportunity_prospect_number ?? '',
+  }
 }
 
-function EmptyState({ filtered }: { filtered: boolean }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20">
-      <div className="w-14 h-14 bg-[#f5f5f7] rounded-2xl flex items-center justify-center mb-4 text-[#aeaeb2]">
-        <TrendingIcon />
-      </div>
-      <p className="text-sm font-medium text-[#6e6e73]">
-        {filtered ? 'No deals match your filters' : 'No deals yet'}
-      </p>
-      <p className="text-xs text-[#aeaeb2] mt-1">
-        {filtered ? 'Try adjusting your filters' : 'Add your first deal to start tracking'}
-      </p>
-    </div>
-  )
+function fmtCompact(n: number) {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(n)
 }
 
-function PipelineBar({ data }: { data: { stage: DealStage; count: number; total_value: number }[] }) {
-  const total = data.reduce((sum, s) => sum + (s.total_value || 0), 0)
-  if (total === 0) return null
-  return (
-    <div className="flex h-2 rounded-full overflow-hidden bg-[#f5f5f7]">
-      {data.map((s) => {
-        const pct = ((s.total_value || 0) / total) * 100
-        if (pct < 1) return null
-        return (
-          <div
-            key={s.stage}
-            className={`${stageConfig[s.stage].bar} first:rounded-l-full last:rounded-r-full`}
-            style={{ width: `${pct}%` }}
-            title={`${stageConfig[s.stage].label}: ${fmtCurrency(s.total_value || 0)}`}
-          />
-        )
-      })}
-    </div>
-  )
+function fmtMoney(n: number | null) {
+  if (n == null) return '—'
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(n)
 }
 
-function FilterBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200 active:scale-95 ${
-        active
-          ? 'bg-[#7C3AED] text-white border border-[#7C3AED]'
-          : 'bg-white border border-[#e5e5ea] text-[#6e6e73] hover:border-[#d1d1d6] hover:text-[#1a1a1a]'
-      }`}
-    >
-      {label}
-    </button>
-  )
+/** Display dates as dd/mm/yyyy */
+function day(value: string | null | undefined) {
+  if (!value) return '—'
+  const iso = value.slice(0, 10)
+  const [y, m, d] = iso.split('-')
+  if (!y || !m || !d) return value
+  return `${d}/${m}/${y}`
 }
 
-function DealRow({ deal }: { deal: Deal }) {
-  const navigate = useNavigate()
-  const overdue = isOverdue(deal.expected_close_date) && deal.stage !== 'WON' && deal.stage !== 'LOST'
+function monthLabel(iso: string) {
+  const parsed = new Date(`${iso}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return iso
+  return parsed.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' })
+}
 
-  return (
-    <tr
-      className="group border-b border-[#f5f5f7] last:border-0 hover:bg-[#f9f9fb] transition-colors duration-100 cursor-pointer"
-      onClick={() => navigate(`/deals/${deal.id}`)}
-    >
-      <td className="px-5 py-3.5">
-        <div>
-          <p className="text-sm font-medium text-[#1a1a1a]">{deal.name}</p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="text-[#aeaeb2]"><BuildingIcon /></span>
-            <span className="text-xs text-[#6e6e73]">{deal.company_name}</span>
-          </div>
-        </div>
-      </td>
-      <td className="px-5 py-3.5">
-        <p className="text-xs text-[#1a1a1a]">{deal.service_pillar || '—'}</p>
-        {deal.sub_category ? <p className="text-[11px] text-[#aeaeb2] mt-0.5">{deal.sub_category}</p> : null}
-      </td>
-      <td className="px-5 py-3.5">
-        <StageBadge stage={deal.stage} />
-      </td>
-      <td className="px-5 py-3.5" title={fmtFullCurrency(deal.value, deal.currency)}>
-        <p className="text-sm font-semibold text-[#1a1a1a]">{fmtCurrency(deal.value, deal.currency)}</p>
-        <p className="text-xs text-[#aeaeb2] mt-0.5">{fmtCurrency(deal.weighted_value, deal.currency)} weighted</p>
-      </td>
-      <td className="px-5 py-3.5">
-        <div className="flex items-center gap-2" title={`${deal.probability}%`}>
-          <div className="w-20 h-1.5 bg-[#f5f5f7] rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full"
-              style={{ width: `${Math.min(100, Math.max(0, deal.probability))}%` }}
-            />
-          </div>
-          <span className="text-xs text-[#6e6e73]">{deal.probability}%</span>
-        </div>
-      </td>
-      <td className="px-5 py-3.5">
-        <div className="flex items-center gap-1.5">
-          {overdue ? <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0" /> : null}
-          <span className={overdue ? 'text-red-600' : 'text-[#aeaeb2]'}>
-            <CalendarIcon />
-          </span>
-          <span className={`text-xs ${overdue ? 'text-red-600' : 'text-[#6e6e73]'}`}>
-            {fmtDate(deal.expected_close_date)}
-            {overdue ? ' · Overdue' : ''}
-          </span>
-        </div>
-      </td>
-      <td className="px-5 py-3.5">
-        <span className="text-xs text-[#6e6e73]">{deal.owner_name ?? '—'}</span>
-      </td>
-    </tr>
-  )
+function formatWhen(iso: string) {
+  return new Date(iso).toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function collectWinAttachments(activities: PulseOpportunityActivity[]): PulseOpportunityActivityAttachment[] {
+  const files: PulseOpportunityActivityAttachment[] = []
+  for (const item of activities) {
+    if (item.to_stage === 'Win' || item.from_stage === 'Win' || item.attachments?.length) {
+      for (const file of item.attachments ?? []) {
+        if (file.url) files.push(file)
+      }
+    }
+  }
+  // Prefer attachments on the Win transition; fall back to all activity files
+  const winOnly = activities
+    .filter((a) => a.to_stage === 'Win')
+    .flatMap((a) => a.attachments ?? [])
+    .filter((f) => f.url)
+  return winOnly.length ? winOnly : files
 }
 
 export default function Deals() {
-  const { isManagement } = useAuth()
+  const { hasAccess } = useAuth()
   const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
-  const [stageFilter, setStageFilter] = useState<DealStage | ''>('')
-  const [pillarFilter, setPillarFilter] = useState('')
-  const [sourceFilter, setSourceFilter] = useState('')
-  const [page, setPage] = useState(1)
-  const [showCreate, setShowCreate] = useState(false)
-  const [view, setView] = useState<'board' | 'table'>('board')
+  const { from: dateFrom, to: dateTo } = useDateRange()
+  const [customer, setCustomer] = useState('')
+  const [vendor, setVendor] = useState('')
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<PoWorkflow | null>(null)
+  const [formError, setFormError] = useState('')
+  const [form, setForm] = useState<FormValues>(emptyForm)
+  const [pendingDelete, setPendingDelete] = useState<PoWorkflow | null>(null)
+  const [deleteError, setDeleteError] = useState('')
+  const [sourceOpp, setSourceOpp] = useState<PulseOpportunity | null>(null)
+  const [logOppId, setLogOppId] = useState<string | null>(null)
+  const [previewFile, setPreviewFile] = useState<PreviewableFile | null>(null)
+  const [selectedWinDoc, setSelectedWinDoc] = useState<PreviewableFile | null>(null)
+  const [wonOpen, setWonOpen] = useState(false)
+  const [opsOpen, setOpsOpen] = useState(false)
+  const allowed = hasAccess('deals')
+  const periodHint = 'In selected range'
 
-  const boardMode = view === 'board'
-  const { data, isLoading } = useQuery({
-    queryKey: ['deals', search, stageFilter, pillarFilter, sourceFilter, page, view],
+  const dash = useQuery({
+    queryKey: ['po-workflow', dateFrom, dateTo, customer, vendor],
     queryFn: () =>
-      dealsApi.list({
-        search: search || undefined,
-        stage: stageFilter || undefined,
-        service_pillar: pillarFilter || undefined,
-        source: sourceFilter || undefined,
-        page: boardMode ? 1 : page,
-        page_size: boardMode ? 200 : 20,
+      dealsApi.poDashboard({
+        from: dateFrom,
+        to: dateTo,
+        customer,
+        billing_entity: vendor,
       }),
-    placeholderData: (prev) => prev,
+    enabled: allowed,
   })
 
-  const { data: pipeline } = useQuery({
-    queryKey: ['pipeline-summary'],
-    queryFn: dealsApi.pipelineSummary,
+  const opsUpdates = useQuery({
+    queryKey: ['pulse-ops-updates'],
+    queryFn: () => pulseApi.listOpsUpdates(50),
+    enabled: allowed,
   })
 
-  const moveMutation = useMutation({
-    mutationFn: ({ id, stage }: { id: string; stage: DealStage }) => dealsApi.update(id, { stage }),
+  const wins = useQuery({
+    queryKey: ['pulse-opportunities', 'Win'],
+    queryFn: () => pulseApi.listOpportunities({ stage: 'Win' }),
+    enabled: allowed,
+  })
+
+  const winLogs = useQuery({
+    queryKey: ['pulse-opportunity-activities', logOppId],
+    queryFn: () => pulseApi.listOpportunityActivities(logOppId!),
+    enabled: Boolean(logOppId),
+  })
+
+  const sourceAttachments = useQuery({
+    queryKey: ['pulse-opportunity-activities', sourceOpp?.id, 'po-form'],
+    queryFn: () => pulseApi.listOpportunityActivities(sourceOpp!.id),
+    enabled: Boolean(sourceOpp?.id) && open && !editing,
+  })
+
+  const winDocs = useMemo(
+    () => collectWinAttachments(sourceAttachments.data ?? []),
+    [sourceAttachments.data],
+  )
+
+  useEffect(() => {
+    if (!open || editing || !sourceOpp) {
+      setSelectedWinDoc(null)
+      return
+    }
+    if (winDocs.length === 0) {
+      setSelectedWinDoc(null)
+      return
+    }
+    setSelectedWinDoc((prev) => {
+      if (prev && winDocs.some((f) => f.id === prev.id)) return prev
+      return winDocs[0]
+    })
+  }, [open, editing, sourceOpp, winDocs])
+
+  const invalidate = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['po-workflow'] })
+    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] })
+    await queryClient.invalidateQueries({ queryKey: ['ledger-summary'] })
+    await queryClient.invalidateQueries({ queryKey: ['finance-ops-summary'] })
+    await queryClient.invalidateQueries({ queryKey: ['pulse-opportunities'] })
+    await queryClient.invalidateQueries({ queryKey: ['pulse-ops-updates'] })
+  }
+
+  const save = useMutation({
+    mutationFn: () => {
+      const payload: Record<string, string> = { ...form }
+      if (!payload.opportunity) delete payload.opportunity
+      delete payload.prospect_number
+      return editing
+        ? dealsApi.updatePoWorkflow(editing.id, payload)
+        : dealsApi.createPoWorkflow(payload)
+    },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['deals'] })
-      await queryClient.invalidateQueries({ queryKey: ['pipeline-summary'] })
-      await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      await invalidate()
+      closeForm()
+      notify.success(editing ? 'PO updated.' : 'PO created.')
+    },
+    onError: (err) => {
+      const message = getErrorMessage(err, editing ? 'Could not update PO.' : 'Could not create PO.')
+      setFormError(message)
+      notify.error(message)
     },
   })
 
-  const isFiltered = Boolean(search) || Boolean(stageFilter) || Boolean(pillarFilter) || Boolean(sourceFilter)
-  const deals = data?.results ?? []
-  const pillars = useMemo(
-    () => (pipeline?.by_pillar ?? []).map((row) => row.name).filter((name) => name !== 'Uncategorised'),
-    [pipeline],
-  )
-  const sources = useMemo(
-    () => (pipeline?.by_source ?? []).map((row) => row.name).filter((name) => name !== 'Unspecified'),
-    [pipeline],
-  )
+  const remove = useMutation({
+    mutationFn: (id: string) => dealsApi.deletePoWorkflow(id),
+    onSuccess: async () => {
+      await invalidate()
+      setPendingDelete(null)
+      setDeleteError('')
+      notify.success('PO deleted.')
+    },
+    onError: (err) => {
+      const message = getErrorMessage(err, 'Could not delete PO.')
+      setDeleteError(message)
+      notify.error(message)
+    },
+  })
+
+  const approve = useMutation({
+    mutationFn: (id: string) => dealsApi.approvePoWorkflow(id),
+    onSuccess: async () => {
+      await invalidate()
+      notify.success('PO approved.')
+    },
+    onError: (err) => notify.error(getErrorMessage(err, 'Could not approve PO.')),
+  })
+
+  const closeForm = () => {
+    setOpen(false)
+    setEditing(null)
+    setSourceOpp(null)
+    setSelectedWinDoc(null)
+    setForm(emptyForm)
+    setFormError('')
+  }
+
+  const openFromWin = (opp: PulseOpportunity) => {
+    const close = opp.expected_close_date?.slice(0, 10) ?? ''
+    setWonOpen(false)
+    setEditing(null)
+    setSourceOpp(opp)
+    setForm({
+      ...emptyForm,
+      customer_name: opp.company_name || '',
+      opportunity: opp.id,
+      prospect_number: opp.prospect_number || '',
+      end_date: close,
+      expiry: close,
+      service_pillar: SERVICE_PILLARS.includes(opp.service_pillar) ? opp.service_pillar : '',
+    })
+    setFormError('')
+    setOpen(true)
+  }
+
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault()
+    if (!editing && !sourceOpp) {
+      setFormError('Create a PO from a Win opportunity in Won hand-off.')
+      return
+    }
+    const missing = REQUIRED.find(([key]) => !form[key].trim())
+    if (missing) {
+      setFormError(`${missing[1]} is required.`)
+      return
+    }
+    if (save.isPending) return
+    setFormError('')
+    save.mutate()
+  }
+
+  if (!allowed) {
+    return <p className="p-6 text-sm text-muted">PO & Contracts is not available for this role.</p>
+  }
+
+  if (dash.isLoading) {
+    return <p className="p-6 text-sm text-muted">Loading PO & Contracts…</p>
+  }
+
+  if (dash.isError || !dash.data) {
+    return (
+      <p className="p-6 text-sm text-danger">
+        {getErrorMessage(dash.error, 'Could not load PO & Contracts.')}
+      </p>
+    )
+  }
+
+  const data = dash.data
+  const rows = data.rows
+  const chartHeight = Math.max(240, data.by_category.length * 36)
+  const winRows = wins.data?.results ?? []
+  const splitMode = Boolean(sourceOpp) && !editing
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+    <div className="p-4 sm:p-6 max-w-screen-xl mx-auto space-y-6 min-w-0">
+      <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7C3AED]">Deal pipeline</p>
-          <h2 className="text-2xl font-semibold text-[#1a1a1a] mt-1">Deals</h2>
-          <p className="text-xs text-[#aeaeb2] mt-0.5">
-            {data ? `${data.count} deals across services and software` : 'Pipeline and deal tracking'}
-          </p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Deal-to-Billing Ops</p>
+          <h2 className="text-2xl font-semibold text-ink mt-1">PO & Contracts</h2>
+          <p className="text-sm text-muted mt-1">Live purchase orders from the PO Workflow sheet.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center p-1 bg-white border border-[#e5e5ea] rounded-xl">
-            {(['board', 'table'] as const).map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => {
-                  setView(item)
-                  setPage(1)
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize ${
-                  view === item ? 'bg-[#7C3AED] text-white' : 'text-[#6e6e73]'
-                }`}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-          {!isManagement ? (
+        <div className="flex flex-wrap items-end gap-2 xl:justify-end">
+          <button
+            type="button"
+            className={btnSecondaryClass}
+            onClick={() => setOpsOpen(true)}
+          >
+            Ops Update
+            <span className="inline-flex min-w-[1.25rem] justify-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-canvas text-muted border border-line">
+              {opsUpdates.isLoading ? '…' : (opsUpdates.data ?? []).length}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={btnPrimaryClass}
+            onClick={() => setWonOpen(true)}
+          >
+            Won hand-off
+            <span className="inline-flex min-w-[1.25rem] justify-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-surface/20 text-white">
+              {wins.isLoading ? '…' : winRows.length}
+            </span>
+          </button>
+          <PulseExcelBar
+            templateName="po-workflow-template.xlsx"
+            exportName="po-workflow.xlsx"
+            onTemplate={dealsApi.poWorkflowTemplate}
+            onExport={dealsApi.exportPoWorkflow}
+            onImport={dealsApi.importPoWorkflow}
+            onImported={() => void invalidate()}
+          />
+          <button
+            type="button"
+            className={btnSecondaryClass}
+            onClick={() => {
+              void queryClient.invalidateQueries({ queryKey: ['po-workflow'] })
+              void queryClient.invalidateQueries({ queryKey: ['pulse-opportunities', 'Win'] })
+              void queryClient.invalidateQueries({ queryKey: ['pulse-ops-updates'] })
+            }}
+          >
+            Refresh
+          </button>
+          <label className="text-[11px] font-medium text-muted shrink-0">
+            Client
+            <select value={customer} onChange={(e) => setCustomer(e.target.value)} className={`${filterField} mt-1`}>
+              <option value="">All Clients</option>
+              {data.clients.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-[11px] font-medium text-muted shrink-0">
+            Vendor
+            <select value={vendor} onChange={(e) => setVendor(e.target.value)} className={`${filterField} mt-1`}>
+              <option value="">All Vendors</option>
+              {data.vendors.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </label>
+          {customer || vendor ? (
             <button
               type="button"
-              onClick={() => setShowCreate(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#7C3AED] hover:bg-violet-700 text-white text-sm font-medium rounded-xl active:scale-95 transition-transform shadow-sm"
+              className={`${btnSecondaryClass} !px-3 !py-2 shrink-0`}
+              onClick={() => {
+                setCustomer('')
+                setVendor('')
+              }}
             >
-              <PlusIcon />
-              Add Deal
+              Clear
             </button>
           ) : null}
         </div>
       </div>
 
-      {pipeline ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-4">
-            <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">Total Pipeline</p>
-            <p className="text-xl font-semibold text-[#1a1a1a] mt-1.5">{fmtCurrency(pipeline.total_pipeline)}</p>
-            <p className="text-xs text-[#aeaeb2] mt-1">{pipeline.active_deals_count} active deals</p>
-          </div>
-          <div className="bg-gradient-to-br from-violet-600 to-indigo-600 border border-violet-600 shadow-sm rounded-2xl p-4 kpi-shine">
-            <p className="text-[11px] font-medium text-violet-100 uppercase tracking-widest">Weighted Pipeline</p>
-            <p className="text-xl font-semibold text-white mt-1.5">{fmtCurrency(pipeline.weighted_pipeline)}</p>
-            <p className="text-xs text-violet-100 mt-1">Risk adjusted</p>
-          </div>
-          <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-4">
-            <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">Won</p>
-            <p className="text-xl font-semibold text-emerald-600 mt-1.5">{fmtCurrency(pipeline.won_value ?? pipeline.won_this_month_value)}</p>
-            <p className="text-xs text-[#aeaeb2] mt-1">{pipeline.won_count ?? pipeline.won_this_month_count} deals · {pipeline.win_rate ?? 0}% win rate</p>
-          </div>
-          <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-4">
-            <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">Closing Soon</p>
-            <p className="text-xl font-semibold text-amber-600 mt-1.5">{pipeline.closing_soon_count}</p>
-            <p className="text-xs text-[#aeaeb2] mt-1">Within 30 days</p>
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-24" />
-          ))}
-        </div>
-      )}
-
-      {pipeline?.by_stage && pipeline.by_stage.length > 0 ? (
-        <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-4 space-y-3">
-          <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">Stage Distribution</p>
-          <PipelineBar data={pipeline.by_stage} />
-          <div className="flex items-center gap-4 flex-wrap">
-            {pipeline.by_stage.map((s) => (
-              <div key={s.stage} className="flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${stageConfig[s.stage].dot}`} />
-                <span className="text-xs text-[#6e6e73]">
-                  {stageConfig[s.stage].label} ({s.count})
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#aeaeb2]">
-            <SearchIcon />
-          </span>
-          <input
-            type="text"
-            placeholder="Search deals, companies, pillars..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value)
-              setPage(1)
-            }}
-            className="pl-9 pr-4 py-2 bg-white border border-[#e5e5ea] rounded-xl text-sm text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors w-72"
-          />
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {STAGE_FILTERS.map((filter) => (
-            <FilterBtn
-              key={filter.label}
-              label={filter.label}
-              active={stageFilter === filter.value}
-              onClick={() => {
-                setStageFilter(filter.value)
-                setPage(1)
-              }}
-            />
-          ))}
-        </div>
-        {sources.length > 0 ? (
-          <select
-            value={sourceFilter}
-            onChange={(e) => {
-              setSourceFilter(e.target.value)
-              setPage(1)
-            }}
-            className="px-3 py-1.5 rounded-xl text-xs bg-white border border-[#e5e5ea] text-[#6e6e73]"
-          >
-            <option value="">All pipelines</option>
-            {sources.map((source) => (
-              <option key={source} value={source}>{source}</option>
-            ))}
-          </select>
-        ) : null}
-        {pillars.length > 0 ? (
-          <select
-            value={pillarFilter}
-            onChange={(e) => {
-              setPillarFilter(e.target.value)
-              setPage(1)
-            }}
-            className="px-3 py-1.5 rounded-xl text-xs bg-white border border-[#e5e5ea] text-[#6e6e73]"
-          >
-            <option value="">All pillars</option>
-            {pillars.map((pillar) => (
-              <option key={pillar} value={pillar}>{pillar}</option>
-            ))}
-          </select>
-        ) : null}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Kpi label="Active POs" value={String(data.kpis.active_pos)} sub={periodHint} edge="brand" />
+        <Kpi label="Total contract value" value={fmtCompact(data.kpis.total_contract_value)} sub={periodHint} accent />
+        <Kpi label="Avg monthly billing" value={fmtCompact(data.kpis.avg_monthly_billing)} sub={periodHint} edge="brand" />
+        <Kpi label="Avg duration" value={`${data.kpis.avg_duration_months.toFixed(1)} months`} sub={periodHint} edge="emerald" />
       </div>
 
-      {boardMode ? (
-        <div className="bg-white/70 border border-[#e5e5ea] shadow-sm rounded-2xl p-4">
-          {isLoading ? (
-            <TableSkeleton />
-          ) : deals.length === 0 ? (
-            <EmptyState filtered={isFiltered} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-surface/80 backdrop-blur-md border border-line rounded-2xl p-5 shadow-sm">
+          <p className="text-sm font-semibold text-ink mb-3">Contract value by category</p>
+          {data.by_category.length === 0 ? (
+            <p className="text-sm text-muted py-16 text-center">No contracts in this filter.</p>
           ) : (
-            <PipelineBoard
-              deals={deals}
-              canMove={!isManagement}
-              onMove={(id, stage) => moveMutation.mutate({ id, stage })}
-            />
+            <ResponsiveContainer width="100%" height={chartHeight}>
+              <BarChart data={data.by_category} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" />
+                <XAxis type="number" tick={chartTick} tickFormatter={(v) => fmtCompact(Number(v))} />
+                <YAxis type="category" dataKey="name" width={100} tick={chartTick} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(value) => fmtMoney(Number(value))} />
+                <Bar dataKey="value" name="Value" fill="var(--color-brand)" radius={[0, 6, 6, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           )}
         </div>
-      ) : (
-        <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
-          {isLoading ? (
-            <TableSkeleton />
-          ) : !data || deals.length === 0 ? (
-            <EmptyState filtered={isFiltered} />
-          ) : (
-            <>
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-[#e5e5ea] bg-[#f9f9fb]">
-                    {['Deal', 'Pillar', 'Stage', 'Value', 'Probability', 'Close Date', 'Owner'].map((heading) => (
-                      <th
-                        key={heading}
-                        className="px-5 py-3.5 text-left text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest"
-                      >
-                        {heading}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.results.map((deal) => (
-                    <DealRow key={deal.id} deal={deal} />
-                  ))}
-                </tbody>
-              </table>
-              <div className="flex items-center justify-between px-5 py-3 border-t border-[#e5e5ea]">
-                <p className="text-xs text-[#6e6e73]">
-                  Page {page} · {data.count} total
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPage((p) => p - 1)}
-                    disabled={!data.previous}
-                    className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] transition-colors"
-                  >
-                    Previous
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPage((p) => p + 1)}
-                    disabled={!data.next}
-                    className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] transition-colors"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+        <div className="bg-surface/80 backdrop-blur-md border border-line rounded-2xl p-5 shadow-sm">
+          <p className="text-sm font-semibold text-ink mb-3">PO timeline</p>
+          <Timeline rows={data.timeline} />
         </div>
-      )}
+      </div>
 
-      <DealFormModal open={showCreate} onClose={() => setShowCreate(false)} />
+      <div className="bg-surface/80 backdrop-blur-md border border-line rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-4 py-4 border-b border-line flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-semibold text-ink">Contracts</h3>
+          <p className="text-xs text-muted">{rows.length} rows</p>
+        </div>
+        {rows.length === 0 ? (
+          <p className="px-4 py-8 text-sm text-muted">No PO workflow rows in this filter. Import the sheet or add a row.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1080px] text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-muted bg-canvas border-b border-line">
+                  {['PO #', 'Customer', 'Prospect', 'Category', 'Total value', 'Monthly', 'Terms', 'Start', 'End', 'Expiry', 'Status', ''].map((h) => (
+                    <th key={h || 'actions'} className="px-4 py-3 font-semibold">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id} className="group border-b border-canvas hover:bg-brand-soft/50">
+                    <td className="px-4 py-3 font-medium text-ink whitespace-nowrap">{row.po_display}</td>
+                    <td className="px-4 py-3 text-ink">{row.customer_name}</td>
+                    <td className="px-4 py-3 text-muted font-mono text-xs whitespace-nowrap">
+                      {row.opportunity_prospect_number || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-muted">{row.service_pillar}</td>
+                    <td className="px-4 py-3 text-ink whitespace-nowrap">{fmtMoney(row.total_value)}</td>
+                    <td className="px-4 py-3 text-muted whitespace-nowrap">{fmtMoney(row.value_per_invoice)}</td>
+                    <td className="px-4 py-3 text-muted">{row.billing_cycle}</td>
+                    <td className="px-4 py-3 text-muted whitespace-nowrap">{day(row.start_date)}</td>
+                    <td className="px-4 py-3 text-muted whitespace-nowrap">{day(row.end_date)}</td>
+                    <td className="px-4 py-3 text-muted whitespace-nowrap">{day(row.expiry)}</td>
+                    <td className="px-4 py-3">
+                      <StatusPill status={row.status} />
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <div className="inline-flex items-center gap-2">
+                        {row.finance_approved ? (
+                          <span className="inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Approved
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className={btnPrimaryClass.replace('px-4 py-2', 'px-2.5 py-1').replace('text-sm', 'text-xs')}
+                            disabled={approve.isPending}
+                            onClick={() => approve.mutate(row.id)}
+                          >
+                            {approve.isPending && approve.variables === row.id ? 'Approving…' : 'Approve'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className={btnRowEditClass}
+                          onClick={() => {
+                            setEditing(row)
+                            setSourceOpp(null)
+                            setForm(fromRow(row))
+                            setFormError('')
+                            setOpen(true)
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className={btnRowDeleteClass}
+                          disabled={remove.isPending}
+                          onClick={() => {
+                            setDeleteError('')
+                            setPendingDelete(row)
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <Modal
+        open={opsOpen}
+        title="Ops Update"
+        onClose={() => setOpsOpen(false)}
+        wide
+      >
+        <p className="text-xs text-muted -mt-2 mb-3">Stage changes from Pulse CRM.</p>
+        {opsUpdates.isLoading ? (
+          <p className="text-sm text-muted py-6">Loading updates…</p>
+        ) : (opsUpdates.data ?? []).length === 0 ? (
+          <p className="text-sm text-muted py-6">No CRM stage changes yet.</p>
+        ) : (
+          <ul className="divide-y divide-canvas max-h-[60vh] overflow-y-auto -mx-1">
+            {(opsUpdates.data ?? []).map((item) => (
+              <li key={item.id} className="px-1 py-3 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm text-ink truncate">
+                    <span className="font-mono text-xs text-brand mr-2">{item.prospect_number}</span>
+                    <span className="font-medium">{item.company_name || item.opportunity_name}</span>
+                    <span className="text-muted"> — {item.from_stage || '—'} → {item.to_stage || '—'}</span>
+                  </p>
+                  {item.note ? (
+                    <p className="text-xs text-muted mt-0.5 truncate">{item.note}</p>
+                  ) : null}
+                </div>
+                <p className="text-[11px] text-subtle shrink-0 whitespace-nowrap">
+                  {item.actor_name || 'System'} · {formatWhen(item.created_at)}
+                  {item.attachment_count > 0 ? ` · ${item.attachment_count} file${item.attachment_count === 1 ? '' : 's'}` : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
+
+      <Modal
+        open={wonOpen}
+        title="Won hand-off"
+        onClose={() => {
+          setWonOpen(false)
+          setLogOppId(null)
+        }}
+        wide
+      >
+        <p className="text-xs text-muted -mt-2 mb-3">
+          Win opportunities from Pulse — review change logs and create POs.
+          {' '}
+          <span className="text-ink font-medium">{winRows.length} win{winRows.length === 1 ? '' : 's'}</span>
+        </p>
+        {wins.isLoading ? (
+          <p className="text-sm text-muted py-6">Loading wins…</p>
+        ) : winRows.length === 0 ? (
+          <p className="text-sm text-muted py-6">No Win opportunities yet.</p>
+        ) : (
+          <ul className="divide-y divide-canvas max-h-[60vh] overflow-y-auto -mx-1">
+            {winRows.map((opp) => {
+              const hasPo = (opp.linked_po_count ?? 0) > 0
+              const logOpen = logOppId === opp.id
+              return (
+                <li key={opp.id} className="px-1 py-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-ink truncate">
+                        <span className="font-mono text-xs text-brand mr-2">{opp.prospect_number}</span>
+                        {opp.name}
+                      </p>
+                      <p className="text-xs text-muted mt-0.5 truncate">
+                        {opp.company_name}
+                        {opp.owner_display ? ` · ${opp.owner_display}` : ''}
+                        {' · '}
+                        {day(opp.expected_close_date)}
+                        {hasPo ? (
+                          <span className="ml-2 inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                            PO linked ({opp.linked_po_count})
+                          </span>
+                        ) : null}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        className={btnSecondaryClass.replace('px-4 py-2', 'px-2.5 py-1.5').replace('text-sm', 'text-xs')}
+                        onClick={() => setLogOppId(logOpen ? null : opp.id)}
+                      >
+                        <ChevronDown
+                          className={`w-3.5 h-3.5 inline mr-1 transition-transform ${logOpen ? 'rotate-180' : ''}`}
+                          strokeWidth={2}
+                          aria-hidden
+                        />
+                        Change log
+                      </button>
+                      <button
+                        type="button"
+                        className={btnPrimaryClass.replace('px-4 py-2', 'px-2.5 py-1.5').replace('text-sm', 'text-xs')}
+                        disabled={hasPo}
+                        title={hasPo ? 'A PO is already linked to this opportunity' : 'Create PO from this Win'}
+                        onClick={() => openFromWin(opp)}
+                      >
+                        Add PO
+                      </button>
+                    </div>
+                  </div>
+                  {logOpen ? (
+                    <div className="mt-3 rounded-xl border border-line bg-canvas/60 p-3 space-y-2 max-h-56 overflow-y-auto">
+                      {winLogs.isLoading ? (
+                        <p className="text-xs text-muted">Loading history…</p>
+                      ) : (winLogs.data ?? []).length === 0 ? (
+                        <p className="text-xs text-muted">No stage changes recorded.</p>
+                      ) : (
+                        (winLogs.data ?? []).map((item) => (
+                          <div key={item.id} className="rounded-lg border border-line bg-surface/80 backdrop-blur-md px-3 py-2">
+                            <p className="text-xs font-medium text-ink">
+                              {item.from_stage || '—'} → {item.to_stage || '—'}
+                            </p>
+                            <p className="text-[11px] text-muted mt-0.5">
+                              {item.actor_name || 'System'} · {formatWhen(item.created_at)}
+                            </p>
+                            {item.note ? <p className="text-xs text-ink mt-1">{item.note}</p> : null}
+                            {(item.attachments ?? []).length > 0 ? (
+                              <ul className="mt-1.5 space-y-1">
+                                {item.attachments.map((file) => (
+                                  <li key={file.id} className="flex items-center gap-2 text-[11px]">
+                                    <FileText className="w-3 h-3 text-subtle shrink-0" />
+                                    <span className="truncate text-ink">{file.file_name}</span>
+                                    {file.url ? (
+                                      <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-brand/30 text-brand hover:bg-brand-soft shrink-0"
+                                        onClick={() => setPreviewFile(file)}
+                                      >
+                                        <Eye className="w-3 h-3" />
+                                        Preview
+                                      </button>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  ) : null}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </Modal>
+
+      <Modal
+        open={open}
+        title={editing ? 'Edit PO' : sourceOpp ? `Add PO · ${sourceOpp.prospect_number}` : 'Add PO'}
+        onClose={() => !save.isPending && closeForm()}
+        wide
+        footer={
+          <button type="submit" form="po-workflow-form" disabled={save.isPending} className={btnPrimaryClass}>
+            {save.isPending ? 'Saving…' : editing ? 'Update PO' : 'Create PO'}
+          </button>
+        }
+      >
+        <form
+          id="po-workflow-form"
+          onSubmit={onSubmit}
+          className={splitMode ? 'grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] gap-5' : undefined}
+        >
+          {splitMode ? (
+            <div className="rounded-xl border border-line bg-canvas/50 p-3 flex flex-col gap-2 min-h-[380px] lg:min-h-[640px]">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Win documents</p>
+              {sourceAttachments.isLoading ? (
+                <p className="text-xs text-muted py-8 text-center">Loading documents…</p>
+              ) : winDocs.length === 0 ? (
+                <p className="text-xs text-muted py-8 text-center">No attachments on the Win stage change.</p>
+              ) : (
+                <>
+                  <ul className="space-y-1.5 shrink-0">
+                    {winDocs.map((file) => {
+                      const active = selectedWinDoc?.id === file.id
+                      return (
+                        <li key={file.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedWinDoc(file)}
+                            className={`w-full flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs transition-colors ${
+                              active
+                                ? 'border-brand bg-brand-soft text-ink'
+                                : 'border-line bg-surface hover:border-brand hover:bg-brand-soft'
+                            }`}
+                          >
+                            <FileText className="w-3.5 h-3.5 text-brand shrink-0" />
+                            <span className="truncate flex-1 text-ink">{file.file_name}</span>
+                            <Eye className={`w-3.5 h-3.5 shrink-0 ${active ? 'text-brand' : 'text-muted'}`} />
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  <div className="flex-1 min-h-0 rounded-xl border border-line bg-surface/80 backdrop-blur-md overflow-hidden">
+                    <DocumentPreviewBody
+                      file={selectedWinDoc}
+                      compact
+                      emptyMessage="Select a document to preview while filling the form."
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
+
+          <div className="grid sm:grid-cols-2 gap-3 content-start">
+            {formError ? <p className="sm:col-span-2 text-sm text-danger">{formError}</p> : null}
+            {(sourceOpp || form.prospect_number) ? (
+              <div className="sm:col-span-2">
+                <label className={labelClass}>Prospect No</label>
+                <input className={`${fieldClass} bg-canvas`} value={form.prospect_number} readOnly />
+              </div>
+            ) : null}
+            <Field label="Customer*" value={form.customer_name} onChange={(value) => setForm((prev) => ({ ...prev, customer_name: value }))} />
+            <SelectField label="Billing Entity*" value={form.billing_entity} options={BILLING_ENTITIES} onChange={(value) => setForm((prev) => ({ ...prev, billing_entity: value }))} />
+            <SelectField label="Service Pillar*" value={form.service_pillar} options={SERVICE_PILLARS} onChange={(value) => setForm((prev) => ({ ...prev, service_pillar: value }))} />
+            <Field label="PO Number*" value={form.po_number} onChange={(value) => setForm((prev) => ({ ...prev, po_number: value }))} />
+            <Field label="PO Date" type="date" value={form.po_date} onChange={(value) => setForm((prev) => ({ ...prev, po_date: value }))} />
+            <SelectField label="Agreement*" value={form.agreement} options={AGREEMENTS} onChange={(value) => setForm((prev) => ({ ...prev, agreement: value }))} />
+            <Field label="Start Date" type="date" value={form.start_date} onChange={(value) => setForm((prev) => ({ ...prev, start_date: value }))} />
+            <Field label="End Date" type="date" value={form.end_date} onChange={(value) => setForm((prev) => ({ ...prev, end_date: value }))} />
+            <Field label="Expiry" type="date" value={form.expiry} onChange={(value) => setForm((prev) => ({ ...prev, expiry: value }))} />
+            <Field label="Total value" value={form.total_value} onChange={(value) => setForm((prev) => ({ ...prev, total_value: value }))} />
+            <Field label="Value per Invoice" value={form.value_per_invoice} onChange={(value) => setForm((prev) => ({ ...prev, value_per_invoice: value }))} />
+            <SelectField label="Billing Cycle*" value={form.billing_cycle} options={BILLING_CYCLES} onChange={(value) => setForm((prev) => ({ ...prev, billing_cycle: value }))} />
+            <SelectField label="Billing Due*" value={form.billing_due} options={BILLING_DUES} allowCustom onChange={(value) => setForm((prev) => ({ ...prev, billing_due: value }))} />
+          </div>
+        </form>
+      </Modal>
+
+      <DocumentPreviewModal
+        open={Boolean(previewFile)}
+        file={previewFile}
+        onClose={() => setPreviewFile(null)}
+      />
+
+      <ConfirmDeleteModal
+        open={Boolean(pendingDelete)}
+        title="Delete PO"
+        message={
+          pendingDelete
+            ? `Delete PO ${pendingDelete.po_display} for ${pendingDelete.customer_name}? This cannot be undone.`
+            : ''
+        }
+        pending={remove.isPending}
+        error={deleteError}
+        onCancel={() => {
+          if (remove.isPending) return
+          setPendingDelete(null)
+          setDeleteError('')
+        }}
+        onConfirm={() => pendingDelete && remove.mutate(pendingDelete.id)}
+      />
+    </div>
+  )
+}
+
+function Timeline({ rows }: { rows: PoWorkflowDashboard['timeline'] }) {
+  const dated = rows.filter((row) => row.start && row.end)
+  if (rows.length === 0) {
+    return <p className="text-sm text-muted py-16 text-center">No contracts in this filter.</p>
+  }
+  const starts = dated.map((row) => new Date(`${row.start}T00:00:00`).getTime())
+  const ends = dated.map((row) => new Date(`${row.end}T00:00:00`).getTime())
+  const min = starts.length ? Math.min(...starts) : 0
+  const max = ends.length ? Math.max(...ends) : 1
+  const span = Math.max(max - min, 1)
+  const ticks = dated.length
+    ? [min, min + span / 2, max].map((value) => monthLabel(new Date(value).toISOString().slice(0, 10)))
+    : []
+
+  return (
+    <div className="space-y-3">
+      {ticks.length ? (
+        <div className="flex justify-between text-[10px] text-subtle px-1">
+          {ticks.map((label) => (
+            <span key={label}>{label}</span>
+          ))}
+        </div>
+      ) : null}
+      <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+        {rows.map((row) => {
+          if (!row.start || !row.end) {
+            return (
+              <div key={row.id} className="flex items-center gap-2 text-xs text-muted">
+                <span className="w-24 truncate text-ink font-medium">{row.po_display}</span>
+                <span className="flex-1 h-2 rounded-full bg-canvas" />
+                <span>No dates</span>
+              </div>
+            )
+          }
+          const start = new Date(`${row.start}T00:00:00`).getTime()
+          const end = new Date(`${row.end}T00:00:00`).getTime()
+          const left = ((start - min) / span) * 100
+          const width = Math.max(((end - start) / span) * 100, 2)
+          return (
+            <div key={row.id} className="flex items-center gap-2">
+              <div className="w-28 min-w-0">
+                <p className="text-xs text-ink truncate" title={row.po_display}>{row.customer_name}</p>
+                <p className="text-[10px] text-subtle truncate">{row.po_display}</p>
+              </div>
+              <div className="flex-1 h-2 rounded-full bg-canvas relative">
+                <div
+                  className={`absolute top-0 h-2 rounded-full ${
+                    row.status === 'Completed' ? 'bg-emerald-400' : 'bg-brand'
+                  }`}
+                  style={{ left: `${left}%`, width: `${width}%` }}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function Kpi({
+  label,
+  value,
+  sub,
+  accent,
+  edge,
+}: {
+  label: string
+  value: string
+  sub: string
+  accent?: boolean
+  edge?: 'brand' | 'emerald'
+}) {
+  const edgeClass =
+    edge === 'brand'
+      ? 'border-l-4 border-l-brand'
+      : edge === 'emerald'
+        ? 'border-l-4 border-l-emerald-500'
+        : ''
+  return (
+    <div className={`bg-surface/80 backdrop-blur-md border border-line rounded-2xl p-4 shadow-sm ${edgeClass} ${accent ? 'bg-brand-soft/40' : ''}`}>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">{label}</p>
+      <p className="text-xl font-semibold text-ink mt-1 tabular-nums">{value}</p>
+      <p className="text-[11px] text-subtle mt-1">{sub}</p>
+    </div>
+  )
+}
+
+function StatusPill({ status }: { status: 'Active' | 'Completed' }) {
+  return (
+    <span
+      className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium ${
+        status === 'Completed'
+          ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+          : 'bg-brand-soft text-brand border border-brand/20'
+      }`}
+    >
+      {status}
+    </span>
+  )
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  type = 'text',
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  type?: string
+}) {
+  return (
+    <div>
+      <label className={labelClass}>{label}</label>
+      <input type={type} className={fieldClass} value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  )
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  onChange,
+  allowCustom,
+}: {
+  label: string
+  value: string
+  options: string[]
+  onChange: (value: string) => void
+  allowCustom?: boolean
+}) {
+  const id = `po-sel-${label.replace(/\W+/g, '-').toLowerCase()}`
+  return (
+    <div>
+      <label className={labelClass} htmlFor={id}>{label}</label>
+      {allowCustom ? (
+        <>
+          <input
+            id={id}
+            list={`${id}-list`}
+            className={fieldClass}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          <datalist id={`${id}-list`}>
+            {options.map((opt) => (
+              <option key={opt} value={opt} />
+            ))}
+          </datalist>
+        </>
+      ) : (
+        <select id={id} className={fieldClass} value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">Select…</option>
+          {options.map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      )}
     </div>
   )
 }

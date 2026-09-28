@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { financeApi } from '../api/finance'
 import { getErrorMessage } from '../api/errors'
+import { notify } from '../lib/notify'
 import type { DocumentType, FinancialPeriod } from '../types'
 import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
@@ -45,11 +46,16 @@ export default function DocumentUploadModal({
       return financeApi.uploadDocument(formData)
     },
     onSuccess: async () => {
+      notify.success('Document uploaded.')
       await queryClient.invalidateQueries({ queryKey: ['financial-documents'] })
       reset()
       onClose()
     },
-    onError: (err) => setError(getErrorMessage(err, 'Could not upload document.')),
+    onError: (err) => {
+      const message = getErrorMessage(err, 'Could not upload document.')
+      setError(message)
+      notify.error(message)
+    },
   })
 
   const handleSubmit = (event: FormEvent) => {

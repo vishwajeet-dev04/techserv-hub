@@ -343,7 +343,7 @@ export default function CompanyDetail() {
   if (isError || !company) {
     return (
       <div className="p-6 max-w-screen-xl mx-auto">
-        <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl py-20 flex flex-col items-center">
+        <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl py-20 flex flex-col items-center">
           <div className="w-16 h-16 rounded-2xl bg-[#f5f5f7] border border-[#e5e5ea] flex items-center justify-center mb-4 text-[#aeaeb2]">
             <BuildingIcon />
           </div>
@@ -389,7 +389,7 @@ export default function CompanyDetail() {
               <button
                 type="button"
                 onClick={() => setShowDeal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e5e5ea] hover:border-[#d1d1d6] text-[#6e6e73] hover:text-[#1a1a1a] text-sm font-medium rounded-xl active:scale-95 transition-transform"
+                className="flex items-center gap-2 px-4 py-2 bg-surface border border-[#e5e5ea] hover:border-[#d1d1d6] text-[#6e6e73] hover:text-[#1a1a1a] text-sm font-medium rounded-xl active:scale-95 transition-transform"
               >
                 <PlusIcon />
                 Add Deal
@@ -406,22 +406,22 @@ export default function CompanyDetail() {
           ) : null}
         </div>
         <div className="grid grid-cols-3 gap-4 mt-6">
-          <div className="bg-white border border-[#e5e5ea] rounded-xl p-4">
+          <div className="bg-surface border border-[#e5e5ea] rounded-xl p-4">
             <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Contacts</p>
             <p className="text-lg font-semibold text-[#1a1a1a] mt-1">{contacts.length}</p>
           </div>
-          <div className="bg-white border border-[#e5e5ea] rounded-xl p-4">
+          <div className="bg-surface border border-[#e5e5ea] rounded-xl p-4">
             <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Deals</p>
             <p className="text-lg font-semibold text-[#1a1a1a] mt-1">{dealsData?.count ?? deals.length}</p>
           </div>
-          <div className="bg-white border border-[#e5e5ea] rounded-xl p-4">
+          <div className="bg-surface border border-[#e5e5ea] rounded-xl p-4">
             <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Total deal value</p>
             <p className="text-lg font-semibold text-[#1a1a1a] mt-1">{fmtCurrency(totalDealValue)}</p>
           </div>
         </div>
       </div>
 
-      <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
+      <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
         <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest mb-2">Company</p>
         <InfoRow label="Location" value={company.location} />
         <InfoRow
@@ -443,7 +443,7 @@ export default function CompanyDetail() {
         <InfoRow label="Notes" value={company.notes} />
       </div>
 
-      <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
+      <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-[#e5e5ea] flex items-center justify-between">
           <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">
             Contacts · {contacts.length}
@@ -452,7 +452,7 @@ export default function CompanyDetail() {
         <ContactsTable contacts={contacts} />
       </div>
 
-      <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
+      <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-[#e5e5ea]">
           <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">
             Linked deals · {dealsData?.count ?? deals.length}

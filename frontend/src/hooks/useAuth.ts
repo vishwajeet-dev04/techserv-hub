@@ -16,6 +16,7 @@ const MODULE_ROLES: Record<string, UserRole[]> = {
   dashboard: ['ADMIN', 'MANAGEMENT', 'SALES', 'FINANCE', 'VIEWER'],
   business: ['ADMIN', 'MANAGEMENT', 'SALES'],
   deals: ['ADMIN', 'MANAGEMENT', 'SALES'],
+  pulse: ['ADMIN', 'MANAGEMENT', 'SALES'],
   finance: ['ADMIN', 'MANAGEMENT', 'SALES', 'FINANCE', 'VIEWER'],
   reports: ['ADMIN', 'MANAGEMENT', 'SALES', 'FINANCE', 'VIEWER'],
   users: ['ADMIN'],
@@ -59,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryKey: ['me'],
     queryFn: authApi.me,
     enabled: hasToken,
+    retry: 1,
   })
 
   const role = readUserRole(user)
@@ -73,7 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasAccess = useCallback(
     (module: string) => {
       if (isAdmin) return true
-      if (!role) return module === 'dashboard'
+      // While /me is loading or failed, do not invent partial access (avoids Hub showing only Executive Summary).
+      if (!role) return false
       return MODULE_ROLES[module]?.includes(role) ?? false
     },
     [role, isAdmin],

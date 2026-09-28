@@ -182,7 +182,7 @@ function ReportSkeleton() {
 
 function ReportError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="bg-white border border-[#e5e5ea] rounded-2xl p-8 text-center shadow-sm">
+    <div className="bg-surface border border-[#e5e5ea] rounded-2xl p-8 text-center shadow-sm">
       <p className="text-sm text-[#6e6e73]">{message}</p>
       <button
         type="button"
@@ -201,7 +201,7 @@ function PrintButton() {
       type="button"
       title="Print report"
       onClick={() => window.print()}
-      className="print:hidden flex items-center gap-2 px-4 py-2 bg-white border border-[#e5e5ea] hover:border-[#d1d1d6] text-[#6e6e73] hover:text-[#1a1a1a] text-sm font-medium rounded-xl transition-colors"
+      className="print:hidden flex items-center gap-2 px-4 py-2 bg-surface border border-[#e5e5ea] hover:border-[#d1d1d6] text-[#6e6e73] hover:text-[#1a1a1a] text-sm font-medium rounded-xl transition-colors"
     >
       <PrinterIcon />
       Print / Export
@@ -225,7 +225,7 @@ function PeriodSelect({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="print:hidden bg-white border border-[#e5e5ea] rounded-xl px-3 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:border-violet-400"
+      className="print:hidden bg-surface border border-[#e5e5ea] rounded-xl px-3 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:border-violet-400"
     >
       {periods.map((period) => (
         <option key={period.id} value={period.id}>
@@ -261,7 +261,7 @@ function ReportHeader({
 
 function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-4">
+    <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl p-4">
       <p className="text-[11px] font-medium uppercase tracking-widest text-[#6e6e73]">{label}</p>
       <p className="text-xl font-semibold text-[#1a1a1a] mt-2 leading-none">{value}</p>
       {sub ? <p className="text-xs text-[#aeaeb2] mt-1.5">{sub}</p> : null}
@@ -271,7 +271,7 @@ function KpiCard({ label, value, sub }: { label: string; value: string; sub?: st
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
+    <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
       <p className="text-[#6e6e73] text-xs font-semibold uppercase tracking-widest mb-3">{title}</p>
       {children}
     </div>
@@ -335,7 +335,7 @@ function TrendTooltip({
 }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-white border border-[#e5e5ea] rounded-xl px-4 py-3 shadow-lg">
+    <div className="bg-surface border border-[#e5e5ea] rounded-xl px-4 py-3 shadow-lg">
       <p className="text-xs text-[#6e6e73] mb-2">{label}</p>
       {payload.map((item) => (
         <div key={item.name} className="flex items-center gap-2">
@@ -666,7 +666,7 @@ function ReportCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`text-left bg-white border shadow-sm rounded-2xl p-6 transition-all duration-200 cursor-pointer ${
+      className={`text-left bg-surface border shadow-sm rounded-2xl p-6 transition-all duration-200 cursor-pointer ${
         selected
           ? 'border-violet-300 ring-2 ring-violet-100'
           : 'border-[#e5e5ea] hover:shadow-md hover:border-[#d1d1d6]'

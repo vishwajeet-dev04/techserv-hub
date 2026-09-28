@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { financeApi } from '../api/finance'
 import { getErrorMessage } from '../api/errors'
+import { notify } from '../lib/notify'
 import { useAuth } from '../hooks/useAuth'
 import type { FinancialPeriod, FinancialMetric } from '../types'
 import PeriodFormModal from '../components/PeriodFormModal'
@@ -64,7 +65,7 @@ const metricGroups = [
 ]
 
 function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-[#f5f5f7] rounded-xl ${className ?? ''}`} />
+  return <div className={`animate-pulse bg-canvas rounded-xl ${className ?? ''}`} />
 }
 
 function MetricCard({
@@ -83,10 +84,10 @@ function MetricCard({
     <div className={`relative rounded-2xl p-4 border shadow-sm ${
       accent
         ? 'bg-gradient-to-br from-violet-600 to-indigo-600 border-violet-600'
-        : 'bg-white border-[#e5e5ea]'
+        : 'bg-surface border-line'
     }`}>
       <div className="flex items-start justify-between mb-3 gap-2">
-      <p className={`text-xs font-medium uppercase tracking-wider leading-tight ${accent ? 'text-violet-100' : 'text-[#6e6e73]'}`}>
+      <p className={`text-xs font-medium uppercase tracking-wider leading-tight ${accent ? 'text-violet-100' : 'text-muted'}`}>
           {label}
         </p>
         {isManual ? (
@@ -96,7 +97,7 @@ function MetricCard({
         ) : null}
       </div>
       <p className={`text-xl font-semibold leading-none ${
-        accent ? 'text-white' : isNegative ? 'text-red-600' : 'text-[#1a1a1a]'
+        accent ? 'text-white' : isNegative ? 'text-red-600' : 'text-ink'
       }`}>
         {fmtCurrency(value)}
       </p>
@@ -126,7 +127,7 @@ function PeriodSelector({
           className={`px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
             selectedId === period.id
               ? 'bg-violet-600 text-white border border-violet-600'
-              : 'bg-white text-[#6e6e73] border border-[#e5e5ea] hover:border-[#d1d1d6]'
+              : 'bg-surface text-muted border border-line hover:border-line'
           }`}
         >
           {period.label}
@@ -138,12 +139,12 @@ function PeriodSelector({
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 bg-white border border-[#e5e5ea] shadow-sm rounded-2xl">
-      <div className="w-14 h-14 bg-[#f5f5f7] rounded-2xl flex items-center justify-center mb-4 text-[#aeaeb2]">
+    <div className="flex flex-col items-center justify-center py-20 bg-surface border border-line shadow-sm rounded-2xl">
+      <div className="w-14 h-14 bg-canvas rounded-2xl flex items-center justify-center mb-4 text-subtle">
         <ChartIcon />
       </div>
-      <p className="text-sm font-medium text-[#6e6e73]">{title}</p>
-      <p className="text-xs text-[#aeaeb2] mt-1">{description}</p>
+      <p className="text-sm font-medium text-muted">{title}</p>
+      <p className="text-xs text-subtle mt-1">{description}</p>
     </div>
   )
 }
@@ -234,41 +235,44 @@ function MetricsEntryForm({
 
     if (failed.length > 0) {
       const prefix = saved > 0 ? `Saved ${saved}. ` : ''
-      setError(`${prefix}Failed to save: ${failed.join('; ')}`)
+      const message = `${prefix}Failed to save: ${failed.join('; ')}`
+      setError(message)
+      notify.error(message)
       return
     }
+    notify.success(`${saved} metric${saved === 1 ? '' : 's'} saved.`)
     onSaved(`${saved} metric${saved === 1 ? '' : 's'} saved.`)
     onClose()
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-[#e5e5ea] rounded-2xl p-6 shadow-sm space-y-6">
+    <form onSubmit={handleSubmit} className="bg-surface border border-line rounded-2xl p-6 shadow-sm space-y-6">
       {error ? (
-        <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="px-4 py-3 rounded-xl bg-danger/10 border border-danger/20">
+          <p className="text-sm text-danger">{error}</p>
         </div>
       ) : null}
       {note ? (
-        <div className="px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
-          <p className="text-sm text-amber-800">{note}</p>
+        <div className="px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 dark:bg-amber-950/40 dark:border-amber-800">
+          <p className="text-sm text-amber-800 dark:text-amber-300">{note}</p>
         </div>
       ) : null}
 
       {metricGroups.map((group, groupIndex) => (
         <div
           key={group.label}
-          className={groupIndex > 0 ? 'pt-5 border-t border-[#e5e5ea]' : ''}
+          className={groupIndex > 0 ? 'pt-5 border-t border-line' : ''}
         >
-          <p className="text-[#6e6e73] text-xs font-semibold uppercase tracking-widest mb-3">
+          <p className="text-muted text-xs font-semibold uppercase tracking-widest mb-3">
             {group.label}
           </p>
           <div>
             {group.codes.map((code) => (
               <div
                 key={code}
-                className="flex items-center justify-between gap-4 py-2.5 border-b border-[#f5f5f7] last:border-0"
+                className="flex items-center justify-between gap-4 py-2.5 border-b border-canvas last:border-0"
               >
-                <label htmlFor={`metric-${code}`} className="text-[#3a3a3c] text-sm font-medium">
+                <label htmlFor={`metric-${code}`} className="text-ink text-sm font-medium">
                   {metricLabels[code] ?? code}
                 </label>
                 <input
@@ -279,7 +283,7 @@ function MetricsEntryForm({
                   onChange={(e) =>
                     setValues((prev) => ({ ...prev, [code]: e.target.value }))
                   }
-                  className="w-48 bg-white border border-[#e5e5ea] rounded-xl px-3 py-2 text-sm text-right text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors"
+                  className="w-48 bg-surface border border-line rounded-xl px-3 py-2 text-sm text-right text-ink placeholder:text-subtle focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors"
                   placeholder="0.00"
                 />
               </div>
@@ -292,7 +296,7 @@ function MetricsEntryForm({
         <button
           type="button"
           onClick={() => setNote('Contact admin to update existing metrics')}
-          className="text-xs text-[#6e6e73] hover:text-[#1a1a1a]"
+          className="text-xs text-muted hover:text-ink"
         >
           Clear & Re-enter
         </button>
@@ -300,7 +304,7 @@ function MetricsEntryForm({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-sm text-[#6e6e73] bg-white border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6]"
+            className="px-4 py-2 rounded-xl text-sm text-muted bg-surface border border-line hover:text-ink hover:border-line"
           >
             Cancel
           </button>
@@ -324,7 +328,6 @@ export default function FinanceBooks() {
   const [showPeriod, setShowPeriod] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
-  const [saveMessage, setSaveMessage] = useState('')
 
   const { data: periodsData, isLoading: periodsLoading } = useQuery({
     queryKey: ['financial-periods'],
@@ -351,9 +354,9 @@ export default function FinanceBooks() {
     <div className="p-6 max-w-screen-xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7C3AED]">TechPay · Books</p>
-          <h2 className="text-2xl font-semibold text-[#1a1a1a] mt-1">Period metrics</h2>
-          <p className="text-xs text-[#aeaeb2] mt-0.5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7C3AED]">Financial Control · Books</p>
+          <h2 className="text-2xl font-semibold text-ink mt-1">Period metrics</h2>
+          <p className="text-xs text-subtle mt-0.5">
             {selectedPeriod ? `Period: ${selectedPeriod.label}` : 'Cash, receivables, and operating position'}
           </p>
         </div>
@@ -361,7 +364,7 @@ export default function FinanceBooks() {
           <button
             type="button"
             onClick={() => setShowUpload(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-[#e5e5ea] hover:border-[#d1d1d6] hover:text-[#1a1a1a] text-[#6e6e73] text-sm font-medium rounded-xl active:scale-95 transition-transform"
+            className="flex items-center gap-2 px-4 py-2 bg-surface border border-line hover:border-line hover:text-ink text-muted text-sm font-medium rounded-xl active:scale-95 transition-transform"
           >
             <UploadIcon />
             Upload Document
@@ -390,7 +393,6 @@ export default function FinanceBooks() {
             selectedId={activePeriodId}
             onSelect={(id) => {
               setSelectedPeriodId(id)
-              setSaveMessage('')
             }}
           />
           {canEditMetrics && activePeriodId ? (
@@ -398,19 +400,12 @@ export default function FinanceBooks() {
               type="button"
               onClick={() => {
                 setFormOpen((open) => !open)
-                setSaveMessage('')
               }}
-              className="px-4 py-2 bg-white border border-[#e5e5ea] hover:border-[#d1d1d6] text-[#6e6e73] hover:text-[#1a1a1a] text-sm font-medium rounded-xl transition-colors shrink-0"
+              className="px-4 py-2 bg-surface border border-line hover:border-line text-muted hover:text-ink text-sm font-medium rounded-xl transition-colors shrink-0"
             >
               Enter / Edit Metrics
             </button>
           ) : null}
-        </div>
-      ) : null}
-
-      {saveMessage ? (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-3">
-          <p className="text-sm">{saveMessage}</p>
         </div>
       ) : null}
 
@@ -420,7 +415,7 @@ export default function FinanceBooks() {
           metricMap={metricMap}
           prefillKey={metrics.map((m) => `${m.metric_code}:${m.value}`).sort().join('|')}
           onClose={() => setFormOpen(false)}
-          onSaved={(message) => setSaveMessage(message)}
+          onSaved={() => {}}
         />
       ) : null}
 
@@ -450,10 +445,10 @@ export default function FinanceBooks() {
               return (
                 <div key={group.label} className="space-y-3">
                   <div className="flex items-center gap-3">
-                    <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider border-l-2 border-l-violet-500 pl-3">
+                    <p className="text-xs font-medium text-muted uppercase tracking-wider border-l-2 border-l-violet-500 pl-3">
                       {group.label}
                     </p>
-                    <div className="flex-1 h-px bg-[#e5e5ea]" />
+                    <div className="flex-1 h-px bg-line" />
                   </div>
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {groupMetrics.map(({ code, metric }) => (

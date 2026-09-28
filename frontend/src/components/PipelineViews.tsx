@@ -87,7 +87,7 @@ export function OwnerPerformance({ rows }: { rows: PipelineBreakdown[] }) {
         const closed = row.won_count + row.lost_count
         const winRate = closed > 0 ? Math.round((row.won_count / closed) * 100) : 0
         return (
-          <div key={row.name} className="rounded-2xl border border-[#e5e5ea] bg-white p-4 shadow-sm">
+          <div key={row.name} className="rounded-2xl border border-[#e5e5ea] bg-surface p-4 shadow-sm">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-sm font-semibold text-[#1a1a1a]">{row.name}</p>
@@ -151,7 +151,7 @@ export function PipelineBoard({
                     draggable={canMove}
                     onDragStart={(event) => event.dataTransfer.setData('text/deal-id', deal.id)}
                     onClick={() => navigate(`/deals/${deal.id}`)}
-                    className="w-full text-left bg-white border border-[#e5e5ea] rounded-xl p-3 shadow-sm hover:border-violet-200 hover:shadow-md transition-all"
+                    className="w-full text-left bg-surface border border-[#e5e5ea] rounded-xl p-3 shadow-sm hover:border-violet-200 hover:shadow-md transition-all"
                   >
                     <p className="text-sm font-medium text-[#1a1a1a] leading-snug">{deal.name}</p>
                     <p className="text-xs text-[#6e6e73] mt-1">{deal.company_name}</p>

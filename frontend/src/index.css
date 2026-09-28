@@ -1,12 +1,62 @@
 @import "tailwindcss";
 
+@theme {
+  --color-ink: #1a1a1a;
+  --color-muted: #6e6e73;
+  --color-subtle: #aeaeb2;
+  --color-canvas: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-line: #e5e5ea;
+  --color-brand: #7c3aed;
+  --color-brand-hover: #6d28d9;
+  --color-brand-soft: #ede9fe;
+  --color-pulse-sidebar: #1c1c1e;
+  --color-pulse-sidebar-hover: #2c2c2e;
+  --color-danger: #dc2626;
+}
+
+html {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+  --color-ink: #f5f5f7;
+  --color-muted: #a1a1a6;
+  --color-subtle: #6e6e73;
+  --color-canvas: #0c0c0e;
+  --color-surface: #1c1c1e;
+  --color-line: #2c2c2e;
+  --color-brand: #8b5cf6;
+  --color-brand-hover: #a78bfa;
+  --color-brand-soft: #2e1065;
+  --color-pulse-sidebar: #141416;
+  --color-pulse-sidebar-hover: #2c2c2e;
+  --color-danger: #f87171;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop,
+  .modal-panel,
+  .funnel-bar,
+  .kpi-shine::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 html,
 body,
 #root {
   min-height: 100%;
-  background: #f5f5f7;
-  color: #1a1a1a;
+  background: transparent;
+  color: var(--color-ink);
 }
+
+body {
+  background: var(--color-canvas);
+}
+
 
 * {
   -webkit-font-smoothing: antialiased;
@@ -19,16 +69,16 @@ body,
 }
 
 ::-webkit-scrollbar-track {
-  background: #f5f5f7;
+  background: var(--color-canvas);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d1d1d6;
+  background: var(--color-subtle);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #aeaeb2;
+  background: var(--color-muted);
 }
 
 @keyframes modal-in {
@@ -86,10 +136,56 @@ body,
   animation: funnel-in 420ms cubic-bezier(0.16, 1, 0.32, 1) both;
 }
 
-.app-canvas {
+.app-atmosphere {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  background-color: var(--color-canvas);
   background-image:
-    radial-gradient(ellipse 80% 50% at 100% -10%, rgba(124, 58, 237, 0.08), transparent),
-    radial-gradient(ellipse 60% 40% at 0% 100%, rgba(79, 70, 229, 0.06), transparent);
+    radial-gradient(ellipse 70% 55% at 12% 18%, rgba(124, 58, 237, 0.18), transparent 58%),
+    radial-gradient(ellipse 55% 45% at 88% 12%, rgba(14, 165, 233, 0.14), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 78% 88%, rgba(244, 63, 94, 0.1), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 20% 85%, rgba(99, 102, 241, 0.12), transparent 50%),
+    radial-gradient(ellipse 90% 70% at 50% 50%, rgba(255, 255, 255, 0.45), transparent 70%);
+}
+
+.app-atmosphere::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  mix-blend-mode: soft-light;
+}
+
+html.dark .app-atmosphere {
+  background-image:
+    radial-gradient(ellipse 70% 55% at 10% 15%, rgba(139, 92, 246, 0.28), transparent 58%),
+    radial-gradient(ellipse 55% 45% at 90% 10%, rgba(56, 189, 248, 0.14), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 80% 90%, rgba(244, 63, 94, 0.12), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 18% 88%, rgba(124, 58, 237, 0.2), transparent 50%),
+    radial-gradient(ellipse 90% 70% at 50% 45%, rgba(28, 28, 30, 0.55), transparent 70%);
+}
+
+html.dark .app-atmosphere::after {
+  opacity: 0.22;
+  mix-blend-mode: overlay;
+}
+
+.panel {
+  background-color: color-mix(in srgb, var(--color-surface) 80%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.app-canvas {
+  background-image: none;
+}
+
+html.dark .app-canvas {
+  background-image: none;
 }
 
 .kpi-shine {

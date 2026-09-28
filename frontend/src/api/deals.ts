@@ -1,5 +1,5 @@
 import apiClient from './client'
-import type { Deal, DealActivity, PaginatedResponse, PipelineSummary } from '../types'
+import type { Deal, DealActivity, PaginatedResponse, PipelineSummary, PoWorkflow, PoWorkflowDashboard, PulseImportResult } from '../types'
 
 interface DealFilters {
   search?: string
@@ -9,6 +9,10 @@ interface DealFilters {
   source?: string
   page?: number
   page_size?: number
+}
+
+function compact(data: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== ''))
 }
 
 export const dealsApi = {
@@ -30,6 +34,59 @@ export const dealsApi = {
   },
   pipelineSummary: async (): Promise<PipelineSummary> => {
     const response = await apiClient.get<PipelineSummary>('/deals/pipeline/summary/')
+    return response.data
+  },
+  listPoWorkflow: async (search?: string): Promise<PaginatedResponse<PoWorkflow>> => {
+    const response = await apiClient.get<PaginatedResponse<PoWorkflow>>('/deals/po-workflow/', {
+      params: { search, page_size: 200 },
+    })
+    return response.data
+  },
+  poDashboard: async (params?: {
+    from?: string
+    to?: string
+    customer?: string
+    billing_entity?: string
+    search?: string
+  }): Promise<PoWorkflowDashboard> => {
+    const response = await apiClient.get<PoWorkflowDashboard>('/deals/po-workflow/dashboard/', {
+      params: {
+        from: params?.from || undefined,
+        to: params?.to || undefined,
+        customer: params?.customer || undefined,
+        billing_entity: params?.billing_entity || undefined,
+        search: params?.search || undefined,
+      },
+    })
+    return response.data
+  },
+  createPoWorkflow: async (data: Record<string, string>): Promise<PoWorkflow> => {
+    const response = await apiClient.post<PoWorkflow>('/deals/po-workflow/', compact(data))
+    return response.data
+  },
+  updatePoWorkflow: async (id: string, data: Record<string, string>): Promise<PoWorkflow> => {
+    const response = await apiClient.patch<PoWorkflow>(`/deals/po-workflow/${id}/`, compact(data))
+    return response.data
+  },
+  deletePoWorkflow: async (id: string): Promise<void> => {
+    await apiClient.delete(`/deals/po-workflow/${id}/`)
+  },
+  approvePoWorkflow: async (id: string): Promise<PoWorkflow> => {
+    const response = await apiClient.post<PoWorkflow>(`/deals/po-workflow/${id}/approve/`)
+    return response.data
+  },
+  exportPoWorkflow: async (): Promise<Blob> => {
+    const response = await apiClient.get('/deals/po-workflow/export/', { responseType: 'blob' })
+    return response.data
+  },
+  poWorkflowTemplate: async (): Promise<Blob> => {
+    const response = await apiClient.get('/deals/po-workflow/template/', { responseType: 'blob' })
+    return response.data
+  },
+  importPoWorkflow: async (file: File): Promise<PulseImportResult> => {
+    const form = new FormData()
+    form.append('file', file)
+    const response = await apiClient.post<PulseImportResult>('/deals/po-workflow/import/', form)
     return response.data
   },
   getActivities: async (dealId: string): Promise<DealActivity[]> => {

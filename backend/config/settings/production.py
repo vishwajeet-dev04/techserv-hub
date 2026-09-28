@@ -26,3 +26,10 @@ CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
     default='https://techserv-hub.vercel.app'
 ).split(',')
+
+FRONTEND_URL = config('FRONTEND_URL', default='https://techserv-hub.vercel.app')
+
+if config('EMAIL_HOST', default=''):
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

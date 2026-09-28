@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getErrorMessage } from '../api/errors'
 import { usersApi } from '../api/users'
 import { useAuth } from '../hooks/useAuth'
+import { notify } from '../lib/notify'
 import type { User, UserRole } from '../types'
 import UserFormModal from '../components/UserFormModal'
 
@@ -21,11 +22,11 @@ const PeopleIcon = () => (
 )
 
 const roleBadges: Record<UserRole, string> = {
-  ADMIN: 'bg-violet-50 text-violet-700 border border-violet-200',
-  MANAGEMENT: 'bg-blue-50 text-blue-700 border border-blue-200',
-  SALES: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  FINANCE: 'bg-amber-50 text-amber-700 border border-amber-200',
-  VIEWER: 'bg-[#f5f5f7] text-[#6e6e73] border border-[#e5e5ea]',
+  ADMIN: 'bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800',
+  MANAGEMENT: 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800',
+  SALES: 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
+  FINANCE: 'bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800',
+  VIEWER: 'bg-canvas text-muted border border-line',
 }
 
 const AVATAR_COLORS = [
@@ -55,7 +56,7 @@ function formatDate(iso: string): string {
 }
 
 function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-[#f5f5f7] rounded-xl ${className ?? ''}`} />
+  return <div className={`animate-pulse bg-canvas rounded-xl ${className ?? ''}`} />
 }
 
 function TableSkeleton() {
@@ -71,11 +72,11 @@ function TableSkeleton() {
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-20">
-      <div className="w-14 h-14 bg-[#f5f5f7] rounded-2xl flex items-center justify-center mb-4 text-[#aeaeb2]">
+      <div className="w-14 h-14 bg-canvas rounded-2xl flex items-center justify-center mb-4 text-muted">
         <PeopleIcon />
       </div>
-      <p className="text-sm font-medium text-[#6e6e73]">No users yet</p>
-      <p className="text-xs text-[#aeaeb2] mt-1">Add your first user to get started</p>
+      <p className="text-sm font-medium text-muted">No users yet</p>
+      <p className="text-xs text-muted mt-1">Add your first user to get started</p>
     </div>
   )
 }
@@ -105,7 +106,7 @@ function FilterBtn({
       className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200 active:scale-95 ${
         active
           ? 'bg-violet-600 text-white border border-violet-600'
-          : 'bg-white border border-[#e5e5ea] text-[#6e6e73] hover:border-[#d1d1d6] hover:text-[#1a1a1a]'
+          : 'bg-surface border border-line text-muted hover:border-line hover:text-ink'
       }`}
     >
       {label}
@@ -138,36 +139,36 @@ function UserRow({
   const isSelf = user.id === currentUserId
 
   return (
-    <tr className="group border-b border-[#f5f5f7] last:border-0 hover:bg-[#f9f9fb] transition-colors duration-100">
+    <tr className="group border-b border-canvas last:border-0 hover:bg-canvas/60 transition-colors duration-100">
       <td className="px-5 py-3.5">
         <div className="flex items-center gap-3">
           <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${avatarColor} flex items-center justify-center shrink-0`}>
             <span className="text-white text-xs font-semibold">{initials}</span>
           </div>
-          <p className="text-sm font-medium text-[#1a1a1a]">{user.name}</p>
+          <p className="text-sm font-medium text-ink">{user.name}</p>
         </div>
       </td>
       <td className="px-5 py-3.5">
-        <p className="text-sm text-[#3a3a3c]">{user.email}</p>
+        <p className="text-sm text-muted">{user.email}</p>
       </td>
       <td className="px-5 py-3.5">
         <RoleBadge role={user.role} />
       </td>
       <td className="px-5 py-3.5">
         {user.is_active ? (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" />
             Active
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-[#f5f5f7] text-[#aeaeb2] border border-[#e5e5ea]">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#aeaeb2]" />
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-xs font-medium bg-canvas text-muted border border-line">
+            <span className="w-1.5 h-1.5 rounded-full bg-muted" />
             Inactive
           </span>
         )}
       </td>
       <td className="px-5 py-3.5">
-        <p className="text-sm text-[#3a3a3c]">{formatDate(user.created_at)}</p>
+        <p className="text-sm text-muted">{formatDate(user.created_at)}</p>
       </td>
       <td className="px-5 py-3.5 text-right">
         {user.is_active && !isSelf ? (
@@ -190,7 +191,6 @@ export default function Users() {
   const { user: currentUser } = useAuth()
   const [page, setPage] = useState(1)
   const [showCreate, setShowCreate] = useState(false)
-  const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<UserRole | ''>('')
 
@@ -212,18 +212,18 @@ export default function Users() {
   const deactivateMutation = useMutation({
     mutationFn: (id: string) => usersApi.deactivate(id),
     onSuccess: async () => {
-      setError('')
+      notify.success('User deactivated.')
       await queryClient.invalidateQueries({ queryKey: ['users'] })
     },
-    onError: (err) => setError(getErrorMessage(err, 'Could not deactivate user.')),
+    onError: (err) => notify.error(getErrorMessage(err, 'Could not deactivate user.')),
   })
 
   return (
     <div className="p-6 max-w-screen-xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-[#1a1a1a]">Users</h2>
-          <p className="text-xs text-[#aeaeb2] mt-0.5">
+          <h2 className="text-2xl font-semibold text-ink">Users</h2>
+          <p className="text-xs text-subtle mt-0.5">
             {data ? `${data.count} users` : 'Team members and access'}
           </p>
         </div>
@@ -237,12 +237,6 @@ export default function Users() {
         </button>
       </div>
 
-      {error ? (
-        <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
-          <p className="text-sm text-red-600">{error}</p>
-        </div>
-      ) : null}
-
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative">
           <input
@@ -251,7 +245,7 @@ export default function Users() {
             placeholder="Search users..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-3 pr-4 py-2 bg-white border border-[#e5e5ea] rounded-xl text-sm text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors w-64"
+            className="pl-3 pr-4 py-2 bg-surface border border-line rounded-xl text-sm text-ink placeholder:text-subtle focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft focus-visible:ring-2 focus-visible:ring-brand transition-colors w-64"
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -266,7 +260,7 @@ export default function Users() {
         </div>
       </div>
 
-      <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
+      <div className="bg-surface border border-line shadow-sm rounded-2xl overflow-hidden">
         {isLoading ? (
           <TableSkeleton />
         ) : !data || users.length === 0 ? (
@@ -275,11 +269,11 @@ export default function Users() {
           <>
             <table className="w-full">
               <thead>
-                <tr className="border-b border-[#e5e5ea] bg-[#f9f9fb]">
+                <tr className="border-b border-line bg-canvas">
                   {['Name', 'Email', 'Role', 'Status', 'Created', ''].map((heading) => (
                     <th
                       key={heading || 'actions'}
-                      className="px-5 py-3.5 text-left text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest"
+                      className="px-5 py-3.5 text-left text-[10px] font-semibold text-subtle uppercase tracking-widest"
                     >
                       {heading}
                     </th>
@@ -298,8 +292,8 @@ export default function Users() {
                 ))}
               </tbody>
             </table>
-            <div className="flex items-center justify-between px-5 py-3 border-t border-[#e5e5ea]">
-              <p className="text-xs text-[#6e6e73]">
+            <div className="flex items-center justify-between px-5 py-3 border-t border-line">
+              <p className="text-xs text-muted">
                 Page {page} · {data.count} total
               </p>
               <div className="flex items-center gap-2">
@@ -307,7 +301,7 @@ export default function Users() {
                   type="button"
                   onClick={() => setPage((p) => p - 1)}
                   disabled={!data.previous}
-                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] transition-colors"
+                  className="px-3 py-1.5 rounded-xl text-xs text-muted bg-surface border border-line disabled:opacity-30 hover:text-ink hover:border-line transition-colors"
                 >
                   Previous
                 </button>
@@ -315,7 +309,7 @@ export default function Users() {
                   type="button"
                   onClick={() => setPage((p) => p + 1)}
                   disabled={!data.next}
-                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] transition-colors"
+                  className="px-3 py-1.5 rounded-xl text-xs text-muted bg-surface border border-line disabled:opacity-30 hover:text-ink hover:border-line transition-colors"
                 >
                   Next
                 </button>

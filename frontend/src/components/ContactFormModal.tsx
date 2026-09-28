@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { companiesApi } from '../api/companies'
 import { getErrorMessage } from '../api/errors'
+import { notify } from '../lib/notify'
 import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
 function normalizeUrl(value: string): string {
@@ -51,12 +52,17 @@ export default function ContactFormModal({ open, companyId, onClose }: ContactFo
         notes: notes.trim(),
       }),
     onSuccess: async () => {
+      notify.success('Contact created.')
       await queryClient.invalidateQueries({ queryKey: ['company', companyId] })
       await queryClient.invalidateQueries({ queryKey: ['companies'] })
       reset()
       onClose()
     },
-    onError: (err) => setError(getErrorMessage(err, 'Could not create contact.')),
+    onError: (err) => {
+      const message = getErrorMessage(err, 'Could not create contact.')
+      setError(message)
+      notify.error(message)
+    },
   })
 
   const handleSubmit = (event: FormEvent) => {

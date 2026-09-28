@@ -20,13 +20,14 @@ apiClient.interceptors.response.use(
   (error) => {
     const status = error.response?.status
     const requestUrl = String(error.config?.url ?? '')
-    const isLoginRequest = requestUrl.includes('/auth/login/')
+    const skipAuthRedirect =
+      requestUrl.includes('/auth/login/') || requestUrl.includes('/auth/logout/')
     if (status === 403) {
       emitPermissionDenied()
-    } else if (status === 401 && !isLoginRequest) {
+    } else if (status === 401 && !skipAuthRedirect) {
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
-      window.location.href = '/login'
+      window.location.assign('/login')
     }
     return Promise.reject(error)
   }

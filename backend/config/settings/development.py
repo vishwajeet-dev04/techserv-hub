@@ -3,7 +3,8 @@ from decouple import config
 
 DEBUG = True
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+# Requests arrive through the Vite proxy with the browser's Host (LAN IP changes with DHCP).
+ALLOWED_HOSTS = ['*']
 
 # Vite uses 5173 by default and 5174+ if that port is taken.
 CORS_ALLOWED_ORIGINS = [
@@ -28,5 +29,10 @@ DATABASES = {
     }
 }
 
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+EMAIL_BACKEND = (
+    'django.core.mail.backends.smtp.EmailBackend'
+    if config('EMAIL_HOST', default='')
+    else 'django.core.mail.backends.console.EmailBackend'
+)
 DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')

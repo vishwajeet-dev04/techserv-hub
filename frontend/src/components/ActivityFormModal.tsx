@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { dealsApi } from '../api/deals'
 import { getErrorMessage } from '../api/errors'
+import { notify } from '../lib/notify'
 import type { DealActivityType } from '../types'
 import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
@@ -52,12 +53,17 @@ export default function ActivityFormModal({ open, dealId, onClose }: ActivityFor
         activity_date: activityDate,
       }),
     onSuccess: async () => {
+      notify.success('Activity added.')
       await queryClient.invalidateQueries({ queryKey: ['deal', dealId] })
       await queryClient.invalidateQueries({ queryKey: ['deal-activities', dealId] })
       reset()
       onClose()
     },
-    onError: (err) => setError(getErrorMessage(err, 'Could not add activity.')),
+    onError: (err) => {
+      const message = getErrorMessage(err, 'Could not add activity.')
+      setError(message)
+      notify.error(message)
+    },
   })
 
   const handleSubmit = (event: FormEvent) => {

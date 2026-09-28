@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { usersApi } from '../api/users'
 import { getErrorMessage } from '../api/errors'
+import { notify } from '../lib/notify'
 import type { UserRole } from '../types'
 import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
@@ -43,11 +44,16 @@ export default function UserFormModal({ open, onClose }: UserFormModalProps) {
         role,
       }),
     onSuccess: async () => {
+      notify.success('User created.')
       await queryClient.invalidateQueries({ queryKey: ['users'] })
       reset()
       onClose()
     },
-    onError: (err) => setError(getErrorMessage(err, 'Could not create user.')),
+    onError: (err) => {
+      const message = getErrorMessage(err, 'Could not create user.')
+      setError(message)
+      notify.error(message)
+    },
   })
 
   const handleSubmit = (event: FormEvent) => {

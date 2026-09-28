@@ -235,7 +235,7 @@ function FilterBtn({
       className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200 active:scale-95 ${
         active
           ? 'bg-violet-600 text-white border border-violet-600'
-          : 'bg-white border border-[#e5e5ea] text-[#6e6e73] hover:border-[#d1d1d6] hover:text-[#1a1a1a]'
+          : 'bg-surface border border-[#e5e5ea] text-[#6e6e73] hover:border-[#d1d1d6] hover:text-[#1a1a1a]'
       }`}
     >
       {label}
@@ -313,7 +313,7 @@ export default function Business() {
               setSearch(e.target.value)
               setPage(1)
             }}
-            className="pl-9 pr-14 py-2 bg-white border border-[#e5e5ea] rounded-xl text-sm text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors w-72"
+            className="pl-9 pr-14 py-2 bg-surface border border-[#e5e5ea] rounded-xl text-sm text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors w-72"
           />
           <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-[#aeaeb2] bg-[#f5f5f7] border border-[#e5e5ea] rounded-md px-1.5 py-0.5">
             ⌘K
@@ -334,7 +334,7 @@ export default function Business() {
         </div>
       </div>
 
-      <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
+      <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
         {isLoading ? (
           <TableSkeleton />
         ) : !data || companies.length === 0 ? (
@@ -369,7 +369,7 @@ export default function Business() {
                   type="button"
                   onClick={() => setPage((p) => p - 1)}
                   disabled={!data.previous}
-                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] active:scale-95 transition-transform"
+                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-surface border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] active:scale-95 transition-transform"
                 >
                   Previous
                 </button>
@@ -377,7 +377,7 @@ export default function Business() {
                   type="button"
                   onClick={() => setPage((p) => p + 1)}
                   disabled={!data.next}
-                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-white border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] active:scale-95 transition-transform"
+                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-surface border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] active:scale-95 transition-transform"
                 >
                   Next
                 </button>

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { dealsApi } from '../api/deals'
 import { getErrorMessage } from '../api/errors'
+import { notify } from '../lib/notify'
 import { useAuth } from '../hooks/useAuth'
 import type { DealActivity, DealActivityType, DealStage } from '../types'
 import ActivityFormModal from '../components/ActivityFormModal'
@@ -181,13 +182,13 @@ function StageMenu({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((prev) => !prev)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#6e6e73] bg-white border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6] disabled:opacity-50 active:scale-95 transition-transform"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#6e6e73] bg-surface border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6] disabled:opacity-50 active:scale-95 transition-transform"
       >
         Edit stage
         <ChevronIcon />
       </button>
       {open ? (
-        <div className="absolute right-0 mt-2 w-44 bg-white border border-[#e5e5ea] rounded-xl shadow-sm z-10 py-1">
+        <div className="absolute right-0 mt-2 w-44 bg-surface border border-[#e5e5ea] rounded-xl shadow-sm z-10 py-1">
           {STAGES.map((stage) => (
             <button
               key={stage}
@@ -231,7 +232,7 @@ function ActivityTimeline({ activities }: { activities: DealActivity[] }) {
             <div className={`absolute left-0 top-1 w-7 h-7 rounded-lg flex items-center justify-center ${activityDot[activity.type]}`}>
               {activityIcons[activity.type]}
             </div>
-            <div className="bg-white border border-[#e5e5ea] rounded-xl p-4 shadow-sm">
+            <div className="bg-surface border border-[#e5e5ea] rounded-xl p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1 min-w-0">
                   <ActivityTypeBadge type={activity.type} />
@@ -282,12 +283,17 @@ export default function DealDetail() {
     mutationFn: (stage: DealStage) => dealsApi.update(id, { stage }),
     onSuccess: async () => {
       setStageError('')
+      notify.success('Deal stage updated.')
       await queryClient.invalidateQueries({ queryKey: ['deal', id] })
       await queryClient.invalidateQueries({ queryKey: ['deals'] })
       await queryClient.invalidateQueries({ queryKey: ['pipeline-summary'] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
-    onError: (err) => setStageError(getErrorMessage(err, 'Could not update stage.')),
+    onError: (err) => {
+      const message = getErrorMessage(err, 'Could not update stage.')
+      setStageError(message)
+      notify.error(message)
+    },
   })
 
   if (isLoading) {
@@ -304,7 +310,7 @@ export default function DealDetail() {
   if (isError || !deal) {
     return (
       <div className="p-6 max-w-screen-xl mx-auto">
-        <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl py-20 flex flex-col items-center">
+        <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl py-20 flex flex-col items-center">
           <div className="w-16 h-16 rounded-2xl bg-[#f5f5f7] border border-[#e5e5ea] flex items-center justify-center mb-4 text-[#aeaeb2]">
             <TrendingIcon />
           </div>
@@ -365,7 +371,7 @@ export default function DealDetail() {
         </div>
       ) : null}
 
-      <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
+      <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
         <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest mb-2">Deal</p>
         <InfoRow label="Value" value={fmtCurrency(deal.value, deal.currency || 'INR')} />
         <InfoRow label="Weighted value" value={fmtCurrency(deal.weighted_value, deal.currency || 'INR')} />
@@ -380,7 +386,7 @@ export default function DealDetail() {
         <InfoRow label="Notes" value={deal.notes} />
       </div>
 
-      <div className="bg-white border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
+      <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-[#e5e5ea] flex items-center justify-between">
           <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">
             Activity timeline · {activities.length}

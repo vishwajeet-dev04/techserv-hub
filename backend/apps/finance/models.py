@@ -250,6 +250,10 @@ class Invoice(models.Model):
     )
     customer_name = models.CharField(max_length=255)
     amount = models.DecimalField(max_digits=15, decimal_places=2)
+    taxable_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    gst_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    tds_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    tds_section = models.CharField(max_length=40, blank=True)
     amount_received = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     invoice_date = models.DateField()
     due_date = models.DateField(null=True, blank=True)
@@ -284,6 +288,7 @@ class Payable(models.Model):
     month_label = models.CharField(max_length=20, blank=True)
     taxable_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     gst_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    tds_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=15, decimal_places=2)
     payable_amount = models.DecimalField(max_digits=15, decimal_places=2)
     due_date = models.DateField(null=True, blank=True)
@@ -315,7 +320,9 @@ class CashflowEntry(models.Model):
         default=CashflowBucket.OPERATING,
     )
     category = models.CharField(max_length=100)
+    sub_category = models.CharField(max_length=100, blank=True)
     entity = models.CharField(max_length=255, blank=True)
+    voucher_no = models.CharField(max_length=80, blank=True, db_index=True)
     amount = models.DecimalField(max_digits=15, decimal_places=2)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -346,3 +353,69 @@ class CapitalEntry(models.Model):
 
     def __str__(self):
         return f'{self.capital_type} {self.counterparty}'
+
+
+class MisUpload(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    file_name = models.CharField(max_length=255)
+    file_type = models.CharField(max_length=10)
+    byte_size = models.PositiveIntegerField()
+    storage_path = models.CharField(max_length=500)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='mis_uploads',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'mis_uploads'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.file_name
+
+
+class ComplianceStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending'
+    COMPLETED = 'COMPLETED', 'Completed'
+    NOT_APPLICABLE = 'NOT_APPLICABLE', 'Not Applicable'
+
+
+class ComplianceItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=500)
+    form_name = models.CharField(max_length=255, blank=True)
+    applicable_act = models.CharField(max_length=150, db_index=True)
+    period_month = models.DateField(db_index=True, help_text='First day of the compliance month')
+    due_date = models.DateField(null=True, blank=True, db_index=True)
+    due_date_note = models.CharField(max_length=255, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=ComplianceStatus.choices,
+        default=ComplianceStatus.PENDING,
+        db_index=True,
+    )
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_compliance_items',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'compliance_items'
+        ordering = ['due_date', 'period_month', 'title']
+        indexes = [
+            models.Index(fields=['period_month', 'status']),
+            models.Index(fields=['due_date', 'status']),
+        ]
+
+    def __str__(self):
+        return self.title

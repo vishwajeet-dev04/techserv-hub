@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { companiesApi } from '../api/companies'
 import { dealsApi } from '../api/deals'
 import { getErrorMessage } from '../api/errors'
+import { notify } from '../lib/notify'
 import type { DealStage } from '../types'
 import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
@@ -65,13 +66,18 @@ export default function DealFormModal({ open, onClose, companyId }: DealFormModa
         description: description.trim(),
       }),
     onSuccess: async () => {
+      notify.success('Deal created.')
       await queryClient.invalidateQueries({ queryKey: ['deals'] })
       await queryClient.invalidateQueries({ queryKey: ['pipeline-summary'] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       reset()
       onClose()
     },
-    onError: (err) => setError(getErrorMessage(err, 'Could not create deal.')),
+    onError: (err) => {
+      const message = getErrorMessage(err, 'Could not create deal.')
+      setError(message)
+      notify.error(message)
+    },
   })
 
   const handleSubmit = (event: FormEvent) => {

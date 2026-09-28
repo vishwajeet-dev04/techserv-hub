@@ -106,3 +106,60 @@ class DealActivity(models.Model):
 
     def __str__(self):
         return f'{self.type}: {self.subject}'
+
+
+class PoWorkflow(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.ForeignKey(
+        'business.Company',
+        on_delete=models.PROTECT,
+        related_name='po_workflows',
+    )
+    customer_name = models.CharField(max_length=255, db_index=True)
+    billing_entity = models.CharField(max_length=120)
+    service_pillar = models.CharField(max_length=120)
+    po_number = models.CharField(max_length=80, db_index=True)
+    po_date = models.DateField(null=True, blank=True)
+    agreement = models.CharField(max_length=40)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+    expiry = models.DateField(null=True, blank=True)
+    total_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    value_per_invoice = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    billing_cycle = models.CharField(max_length=80)
+    billing_due = models.CharField(max_length=120)
+    finance_approved_at = models.DateTimeField(null=True, blank=True)
+    finance_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='approved_po_workflows',
+    )
+    finance_purchase_order = models.ForeignKey(
+        'finance.PurchaseOrder',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='source_po_workflows',
+    )
+    opportunity = models.ForeignKey(
+        'pulse.Opportunity',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='po_workflows',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'po_workflows'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.po_number} ({self.customer_name})'
+
+    @property
+    def finance_approved(self) -> bool:
+        return self.finance_approved_at is not None

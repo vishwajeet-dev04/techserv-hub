@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { financeApi } from '../api/finance'
 import { getErrorMessage } from '../api/errors'
+import { notify } from '../lib/notify'
 import type { PeriodType } from '../types'
 import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
@@ -35,12 +36,17 @@ export default function PeriodFormModal({ open, onClose }: PeriodFormModalProps)
         label: label.trim(),
       }),
     onSuccess: async () => {
+      notify.success('Period created.')
       await queryClient.invalidateQueries({ queryKey: ['financial-periods'] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       reset()
       onClose()
     },
-    onError: (err) => setError(getErrorMessage(err, 'Could not create period.')),
+    onError: (err) => {
+      const message = getErrorMessage(err, 'Could not create period.')
+      setError(message)
+      notify.error(message)
+    },
   })
 
   const handleSubmit = (event: FormEvent) => {

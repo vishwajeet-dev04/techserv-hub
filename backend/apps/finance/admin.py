@@ -2,10 +2,12 @@ from django.contrib import admin
 from .models import (
     CapitalEntry,
     CashflowEntry,
+    ComplianceItem,
     FinancialDocument,
     FinancialMetric,
     FinancialPeriod,
     Invoice,
+    MisUpload,
     Payable,
     PurchaseOrder,
 )
@@ -60,7 +62,7 @@ class InvoiceAdmin(admin.ModelAdmin):
 
 @admin.register(Payable)
 class PayableAdmin(admin.ModelAdmin):
-    list_display = ['vendor', 'invoice_number', 'payable_amount', 'status', 'due_date']
+    list_display = ['vendor', 'invoice_number', 'payable_amount', 'tds_amount', 'status', 'due_date']
     list_filter = ['status']
     search_fields = ['vendor', 'invoice_number']
 
@@ -75,3 +77,23 @@ class CashflowEntryAdmin(admin.ModelAdmin):
 class CapitalEntryAdmin(admin.ModelAdmin):
     list_display = ['capital_type', 'counterparty', 'amount', 'entry_date', 'status']
     list_filter = ['capital_type']
+
+
+@admin.register(MisUpload)
+class MisUploadAdmin(admin.ModelAdmin):
+    list_display = ['file_name', 'byte_size', 'uploaded_by', 'created_at']
+    search_fields = ['file_name']
+    readonly_fields = ['storage_path']
+    raw_id_fields = ['uploaded_by']
+
+
+@admin.register(ComplianceItem)
+class ComplianceItemAdmin(admin.ModelAdmin):
+    list_display = [
+        'title', 'form_name', 'applicable_act', 'period_month',
+        'due_date', 'status', 'created_at',
+    ]
+    list_filter = ['status', 'applicable_act', 'period_month']
+    search_fields = ['title', 'form_name', 'applicable_act', 'due_date_note']
+    ordering = ['due_date', 'period_month']
+    raw_id_fields = ['created_by']

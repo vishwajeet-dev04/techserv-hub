@@ -9,6 +9,8 @@ from .views import (
     financial_summary,
     revenue_trend,
     ops_summary,
+    ops_dashboard_series,
+    bank_position,
     PurchaseOrderListCreateView,
     PurchaseOrderDetailView,
     InvoiceListCreateView,
@@ -19,6 +21,10 @@ from .views import (
     CashflowEntryDetailView,
     CapitalEntryListCreateView,
     CapitalEntryDetailView,
+    ComplianceItemListCreateView,
+    ComplianceItemDetailView,
+    MisUploadListCreateView,
+    ledger_page_summary,
 )
 
 urlpatterns = [
@@ -31,6 +37,9 @@ urlpatterns = [
     path('summary/', financial_summary, name='financial-summary'),
     path('trend/', revenue_trend, name='revenue-trend'),
     path('ops/summary/', ops_summary, name='ops-summary'),
+    path('ops/dashboard-series/', ops_dashboard_series, name='ops-dashboard-series'),
+    path('bank-position/', bank_position, name='bank-position'),
+    path('ledger/summary/', ledger_page_summary, name='ledger-page-summary'),
     path('purchase-orders/', PurchaseOrderListCreateView.as_view(), name='po-list'),
     path('purchase-orders/<uuid:pk>/', PurchaseOrderDetailView.as_view(), name='po-detail'),
     path('invoices/', InvoiceListCreateView.as_view(), name='invoice-list'),
@@ -41,4 +50,7 @@ urlpatterns = [
     path('cashflow/<uuid:pk>/', CashflowEntryDetailView.as_view(), name='cashflow-detail'),
     path('capital/', CapitalEntryListCreateView.as_view(), name='capital-list'),
     path('capital/<uuid:pk>/', CapitalEntryDetailView.as_view(), name='capital-detail'),
+    path('compliance/', ComplianceItemListCreateView.as_view(), name='compliance-list'),
+    path('compliance/<uuid:pk>/', ComplianceItemDetailView.as_view(), name='compliance-detail'),
+    path('mis/', MisUploadListCreateView.as_view(), name='mis-upload-list'),
 ]

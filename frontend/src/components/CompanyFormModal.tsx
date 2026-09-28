@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { companiesApi } from '../api/companies'
 import { getErrorMessage } from '../api/errors'
+import { notify } from '../lib/notify'
 import type { CompanyStatus } from '../types'
 import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
@@ -51,12 +52,17 @@ export default function CompanyFormModal({ open, onClose }: CompanyFormModalProp
         notes: notes.trim(),
       }),
     onSuccess: async () => {
+      notify.success('Company created.')
       await queryClient.invalidateQueries({ queryKey: ['companies'] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       reset()
       onClose()
     },
-    onError: (err) => setError(getErrorMessage(err, 'Could not create company.')),
+    onError: (err) => {
+      const message = getErrorMessage(err, 'Could not create company.')
+      setError(message)
+      notify.error(message)
+    },
   })
 
   const handleSubmit = (event: FormEvent) => {
