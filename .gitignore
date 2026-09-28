@@ -29,3 +29,6 @@ dist/
 # Coverage
 .coverage
 .pytest_cache/
+# Local
+.cursor/
+PROJECT_CONTEXT/
