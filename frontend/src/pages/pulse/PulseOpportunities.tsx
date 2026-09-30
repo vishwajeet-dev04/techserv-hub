@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Eye, FileText } from 'lucide-react'
@@ -6,10 +6,12 @@ import { pulseApi } from '../../api/pulse'
 import { getErrorMessage } from '../../api/errors'
 import Modal, { btnPrimaryClass, btnRowDeleteClass, btnRowEditClass, fieldClass, labelClass } from '../../components/Modal'
 import ConfirmDeleteModal from '../../components/ConfirmDeleteModal'
+import ConfirmActionModal from '../../components/ConfirmActionModal'
 import DocumentPreviewModal, { type PreviewableFile } from '../../components/DocumentPreviewModal'
 import PulseExcelBar from '../../components/PulseExcelBar'
 import PulsePageHeader from '../../components/pulse/PulsePageHeader'
 import PulseToolbar from '../../components/pulse/PulseToolbar'
+import CorrectedDocumentsPanel from '../../components/pulse/CorrectedDocumentsPanel'
 import PulseTableShell, {
   PulseEmptyState,
   PulseLoadingRows,
@@ -38,7 +40,7 @@ import {
   validateContactForm,
   validateOpportunityForm,
 } from '../../lib/pulseValidation'
-import type { PulseOpportunity } from '../../types'
+import type { PulseOpportunity, PulseOpportunityActivity } from '../../types'
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
@@ -76,6 +78,20 @@ function ChevronIcon() {
 
 const STAGE_CELL_WIDTH = 'min-w-[11.5rem] w-[11.5rem]'
 
+const PIPELINE_ORDER = ['Prospect', 'Qualify', 'Approach', 'Demo', 'Commercial', 'Negotiation']
+const TERMINAL_STAGES = ['Win', 'Lost', 'Cancelled']
+
+function isTerminalStage(stage: string) {
+  return TERMINAL_STAGES.includes(stage)
+}
+
+function allowedNextStages(stage: string) {
+  if (isTerminalStage(stage)) return []
+  const index = PIPELINE_ORDER.indexOf(stage)
+  const later = index >= 0 ? PIPELINE_ORDER.slice(index + 1) : PIPELINE_ORDER
+  return [...later, ...TERMINAL_STAGES]
+}
+
 function StageBadge({
   stage,
   pending,
@@ -85,11 +101,22 @@ function StageBadge({
   pending?: boolean
   onOpen: () => void
 }) {
+  if (isTerminalStage(stage)) {
+    return (
+      <span
+        title="Final stage — cannot be changed"
+        className={`inline-flex items-center justify-between gap-1 ${STAGE_CELL_WIDTH} border border-transparent rounded-lg px-2 py-1 text-xs ${STAGE_STYLE[stage] ?? 'bg-canvas text-muted'}`}
+      >
+        <span className="truncate">{stage}</span>
+        <span className="text-[10px] uppercase tracking-wider opacity-70">Final</span>
+      </span>
+    )
+  }
   return (
     <button
       type="button"
-      title="Change sales stage"
-      aria-label="Change sales stage"
+      title="Update sales stage or follow-up"
+      aria-label="Update sales stage or follow-up"
       disabled={pending}
       onClick={onOpen}
       className={`inline-flex items-center justify-between gap-1 ${STAGE_CELL_WIDTH} border border-line rounded-lg px-2 py-1 text-xs text-left hover:border-brand hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 ${STAGE_STYLE[stage] ?? 'bg-canvas text-muted'}`}
@@ -129,6 +156,48 @@ function ActivityAttachments({
         </li>
       ))}
     </ul>
+  )
+}
+
+function DocsIssueBadge({ row, onOpen }: { row: PulseOpportunity; onOpen: () => void }) {
+  if (row.stage !== 'Win' || !row.open_po_issue_count) return null
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title="Ops reported a problem with the Win documents. Open to upload corrected files."
+      className="ml-2 inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-sans font-medium bg-danger-soft text-danger border border-danger/30 hover:border-danger"
+    >
+      Docs issue
+    </button>
+  )
+}
+
+function ActivityEntry({
+  item,
+  onPreview,
+}: {
+  item: PulseOpportunityActivity
+  onPreview: (file: PreviewableFile) => void
+}) {
+  const followUpOnly = item.action === 'FOLLOW_UP_CHANGE'
+  const documentsOnly = item.action === 'DOCUMENT_UPDATE'
+  return (
+    <div className="rounded-xl border border-line bg-canvas px-3 py-2">
+      <p className="text-xs font-medium text-ink">
+        {documentsOnly
+          ? 'Documents updated'
+          : followUpOnly
+            ? `Follow-up extended to ${formatDate(item.follow_up_date)} · stays in ${item.to_stage || '—'}`
+            : `${item.from_stage || '—'} → ${item.to_stage || '—'}`}
+      </p>
+      <p className="text-[11px] text-muted mt-0.5">
+        {item.actor_name || 'System'} · {formatWhen(item.created_at)}
+        {!followUpOnly && !documentsOnly && item.follow_up_date ? ` · Follow-up ${formatDate(item.follow_up_date)}` : ''}
+      </p>
+      {item.note ? <p className="text-xs text-ink mt-1">{item.note}</p> : null}
+      <ActivityAttachments items={item.attachments} onPreview={onPreview} />
+    </div>
   )
 }
 
@@ -212,9 +281,9 @@ export default function PulseOpportunities() {
   const queryClient = useQueryClient()
   const [params] = useSearchParams()
   const [search, setSearch] = useState(params.get('search') ?? '')
-  const [stage, setStage] = useState('')
-  const [pillarFilter, setPillarFilter] = useState('')
-  const [ownerFilter, setOwnerFilter] = useState('')
+  const [stageParam, setStage] = useState(params.get('stage') ?? '')
+  const [pillarFilter, setPillarFilter] = useState(params.get('pillar') ?? '')
+  const [ownerFilter, setOwnerFilter] = useState(params.get('owner') ?? '')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [open, setOpen] = useState(false)
@@ -233,7 +302,9 @@ export default function PulseOpportunities() {
     from: string
     to: string
     currency: string
+    followUp: string
   } | null>(null)
+  const [stageConfirmOpen, setStageConfirmOpen] = useState(false)
   const [stageFollowUp, setStageFollowUp] = useState('')
   const [stageNote, setStageNote] = useState('')
   const [stageFiles, setStageFiles] = useState<File[]>([])
@@ -267,10 +338,14 @@ export default function PulseOpportunities() {
   })
 
   const save = useMutation({
-    mutationFn: (payload: typeof emptyForm) =>
-      editing
-        ? pulseApi.updateOpportunity(editing.id, payload)
-        : pulseApi.createOpportunity(payload),
+    mutationFn: (payload: typeof emptyForm) => {
+      if (!editing) return pulseApi.createOpportunity(payload)
+      // Stage and follow-up only change through the confirmed stage modal, which logs history.
+      const rest = Object.fromEntries(
+        Object.entries(payload).filter(([key]) => key !== 'stage' && key !== 'follow_up_date'),
+      )
+      return pulseApi.updateOpportunity(editing.id, rest)
+    },
     onSuccess: async (_data, payload) => {
       rememberCustomValue('lead_source', payload.lead_source, LEAD_SOURCE_PRESETS)
       await queryClient.invalidateQueries({ queryKey: ['pulse-opportunities'] })
@@ -341,7 +416,7 @@ export default function PulseOpportunities() {
       negotiated_amount,
     }: {
       id: string
-      stage: string
+      stage?: string
       follow_up_date: string
       stage_note: string
       files: File[]
@@ -349,7 +424,7 @@ export default function PulseOpportunities() {
     }) => {
       if (files.length > 0) {
         const formData = new FormData()
-        formData.append('stage', next)
+        if (next) formData.append('stage', next)
         formData.append('follow_up_date', follow_up_date)
         formData.append('stage_note', stage_note)
         if (negotiated_amount) formData.append('negotiated_amount', negotiated_amount)
@@ -357,28 +432,40 @@ export default function PulseOpportunities() {
         return pulseApi.updateOpportunity(id, formData)
       }
       return pulseApi.updateOpportunity(id, {
-        stage: next,
+        ...(next ? { stage: next } : {}),
         follow_up_date,
         stage_note,
         ...(negotiated_amount ? { negotiated_amount } : {}),
       })
     },
-    onSuccess: async (_data, vars) => {
+    onSuccess: async (data, vars) => {
       await queryClient.invalidateQueries({ queryKey: ['pulse-opportunities'] })
       await queryClient.invalidateQueries({ queryKey: ['pulse-summary'] })
       await queryClient.invalidateQueries({ queryKey: ['pulse-pipeline'] })
       await queryClient.invalidateQueries({ queryKey: ['pulse-executive'] })
       await queryClient.invalidateQueries({ queryKey: ['pulse-opportunity-activities', vars.id] })
+      if (editing?.id === vars.id) {
+        setEditing(data)
+        setForm((prev) => ({
+          ...prev,
+          stage: data.stage,
+          follow_up_date: dateInput(data.follow_up_date),
+          negotiated_amount: data.negotiated_amount ? String(data.negotiated_amount) : prev.negotiated_amount,
+          comments: data.comments ?? prev.comments,
+        }))
+      }
+      setStageConfirmOpen(false)
       setStageModal(null)
       setStageFollowUp('')
       setStageNote('')
       setStageFiles([])
       setStageNegotiated('')
       setStageModalError('')
-      notify.success('Sales stage updated.')
+      notify.success(vars.stage ? 'Sales stage updated.' : 'Follow-up date updated.')
     },
     onError: (err) => {
-      const message = getErrorMessage(err, 'Could not update sales stage.')
+      const message = getErrorMessage(err, 'Could not save the change.')
+      setStageConfirmOpen(false)
       setStageModalError(message)
       notify.error(message)
     },
@@ -392,6 +479,7 @@ export default function PulseOpportunities() {
   const stages = settings.data?.sales_stages ?? []
   const currencies = settings.data?.currencies?.length ? settings.data.currencies : FALLBACK_CURRENCIES
   const defaultCurrency = settings.data?.default_currency || 'INR'
+  const stage = stages.find((item) => item.toLowerCase() === stageParam.toLowerCase()) ?? stageParam
 
   const openCreate = () => {
     setEditing(null)
@@ -399,6 +487,30 @@ export default function PulseOpportunities() {
     setFormError('')
     setFieldErrors({})
     setOpen(true)
+  }
+
+  const openEditRow = (row: PulseOpportunity) => {
+    setEditing(row)
+    setForm(formFromRow(row))
+    setFormError('')
+    setOpen(true)
+  }
+
+  const openStageModal = (row: PulseOpportunity) => {
+    if (isTerminalStage(row.stage)) return
+    setStageConfirmOpen(false)
+    setStageModal({
+      id: row.id,
+      from: row.stage,
+      to: row.stage,
+      currency: row.currency,
+      followUp: dateInput(row.follow_up_date),
+    })
+    setStageFollowUp(dateInput(row.follow_up_date))
+    setStageNote('')
+    setStageFiles([])
+    setStageNegotiated(Number(row.negotiated_amount) ? String(row.negotiated_amount) : '')
+    setStageModalError('')
   }
 
   const closeForm = () => {
@@ -519,8 +631,78 @@ export default function PulseOpportunities() {
   const saving = save.isPending
   const assigneeRows = assignees.data ?? []
 
+  const keepingStage = Boolean(stageModal && stageModal.to === stageModal.from)
+
+  const reviewStageChange = () => {
+    if (!stageModal) return
+    if (!stageFollowUp.trim()) {
+      setStageModalError('Follow-up date is required.')
+      return
+    }
+    if (keepingStage && stageFollowUp === stageModal.followUp) {
+      setStageModalError('Pick a new stage or change the follow-up date.')
+      return
+    }
+    if (!keepingStage && !allowedNextStages(stageModal.from).includes(stageModal.to)) {
+      setStageModalError(`Sales stage can only move forward from ${stageModal.from}.`)
+      return
+    }
+    if (!stageNote.trim()) {
+      setStageModalError('Notes are required.')
+      return
+    }
+    if (!keepingStage) {
+      if (stageFiles.length > 10) {
+        setStageModalError('At most 10 files can be attached.')
+        return
+      }
+      if (stageModal.to === 'Win' && stageFiles.length < 1) {
+        setStageModalError('At least one document is required when moving to Win.')
+        return
+      }
+      if (stageModal.to === 'Negotiation' && !(Number(stageNegotiated) > 0)) {
+        setStageModalError('Final negotiation value is required when moving to Negotiation.')
+        return
+      }
+    }
+    setStageModalError('')
+    setStageConfirmOpen(true)
+  }
+
+  const submitStageChange = () => {
+    if (!stageModal || updateStage.isPending) return
+    updateStage.mutate({
+      id: stageModal.id,
+      stage: keepingStage ? undefined : stageModal.to,
+      follow_up_date: stageFollowUp,
+      stage_note: stageNote.trim(),
+      files: keepingStage ? [] : stageFiles,
+      negotiated_amount: !keepingStage && stageModal.to === 'Negotiation' ? stageNegotiated.trim() : undefined,
+    })
+  }
+
+  const stageConfirmMessage = !stageModal
+    ? ''
+    : keepingStage
+      ? `Keep ${stageModal.from} and move the follow-up from ${formatDate(stageModal.followUp || null)} to ${formatDate(stageFollowUp || null)}?`
+      : isTerminalStage(stageModal.to)
+        ? `Move ${stageModal.from} to ${stageModal.to}? ${stageModal.to} is a final stage — it cannot be changed afterwards.`
+        : `Move ${stageModal.from} to ${stageModal.to}? Stages only move forward, so this cannot be undone.`
+
+  const stageConfirmDetails = stageModal
+    ? [
+        { label: 'Stage', value: keepingStage ? `${stageModal.from} (unchanged)` : `${stageModal.from} → ${stageModal.to}` },
+        { label: 'Follow-up', value: formatDate(stageFollowUp || null) },
+        ...(!keepingStage && stageModal.to === 'Negotiation' && stageNegotiated
+          ? [{ label: 'Negotiated', value: formatAmount(Number(stageNegotiated), stageModal.currency) }]
+          : []),
+        ...(!keepingStage && stageFiles.length ? [{ label: 'Attachments', value: `${stageFiles.length} file(s)` }] : []),
+        { label: 'Note', value: stageNote.trim() },
+      ]
+    : undefined
+
   return (
-    <div className="p-6 max-w-[1800px] mx-auto">
+    <div className="p-4 sm:p-6 max-w-[1800px] mx-auto">
       <PulsePageHeader
         title="Opportunities"
         subtitle="Track and manage your sales pipeline."
@@ -589,6 +771,78 @@ export default function PulseOpportunities() {
           minWidth="min-w-[1700px]"
           title="Opportunities"
           count={filtered.length}
+          mobileCards={pageRows.map((row) => (
+            <div key={row.id} className="px-4 py-3.5 space-y-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-mono text-muted">
+                    {row.prospect_number}
+                    <DocsIssueBadge row={row} onOpen={() => setDocsRow(row)} />
+                  </p>
+                  <p className="text-sm font-semibold text-ink truncate">{row.name}</p>
+                  <p className="text-xs text-muted truncate">
+                    {row.company_name}
+                    {row.contact_name ? ` · ${row.contact_name}` : ''}
+                  </p>
+                </div>
+                <StageBadge
+                  stage={row.stage}
+                  pending={updateStage.isPending && stageModal?.id === row.id}
+                  onOpen={() => openStageModal(row)}
+                />
+              </div>
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                <div>
+                  <dt className="text-subtle">Expected</dt>
+                  <dd className="text-ink font-medium tabular-nums">{formatAmount(Number(row.expected_amount), row.currency)}</dd>
+                </div>
+                <div>
+                  <dt className="text-subtle">Negotiated</dt>
+                  <dd className="text-ink font-medium tabular-nums">
+                    {Number(row.negotiated_amount) ? formatAmount(Number(row.negotiated_amount), row.currency) : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-subtle">Pillar</dt>
+                  <dd className="text-muted truncate">{row.service_pillar || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-subtle">Owner</dt>
+                  <dd className="text-muted truncate">{row.owner_display || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-subtle">Follow-up</dt>
+                  <dd className="text-muted">{formatDate(row.follow_up_date)}</dd>
+                </div>
+                <div>
+                  <dt className="text-subtle">Expected close</dt>
+                  <dd className="text-muted">{formatDate(row.expected_close_date)}</dd>
+                </div>
+              </dl>
+              <div className="flex flex-wrap gap-2 pt-0.5">
+                <button type="button" className={`${btnRowEditClass} !py-2`} onClick={() => setDocsRow(row)}>
+                  Documents
+                </button>
+                <button type="button" className={`${btnRowEditClass} !py-2`} onClick={() => setHistoryRow(row)}>
+                  History
+                </button>
+                <button type="button" className={`${btnRowEditClass} !py-2`} onClick={() => openEditRow(row)}>
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className={`${btnRowDeleteClass} !py-2`}
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    setDeleteError('')
+                    setPendingDelete(row)
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
           headerRight={
             <div className="flex flex-wrap items-center gap-1.5 justify-end max-w-full">
               <button
@@ -640,7 +894,10 @@ export default function PulseOpportunities() {
             <tbody>
               {pageRows.map((row) => (
                 <tr key={row.id} className="border-b border-canvas hover:bg-canvas/60">
-                  <td className="px-3 py-3 font-medium whitespace-nowrap">{row.prospect_number}</td>
+                  <td className="px-3 py-3 font-medium whitespace-nowrap">
+                    {row.prospect_number}
+                    <DocsIssueBadge row={row} onOpen={() => setDocsRow(row)} />
+                  </td>
                   <td className="px-3 py-3">
                     <p className="font-medium">{row.name}</p>
                     {row.is_high_value ? (
@@ -659,14 +916,7 @@ export default function PulseOpportunities() {
                     <StageBadge
                       stage={row.stage}
                       pending={updateStage.isPending && stageModal?.id === row.id}
-                      onOpen={() => {
-                        setStageModal({ id: row.id, from: row.stage, to: row.stage, currency: row.currency })
-                        setStageFollowUp(dateInput(row.follow_up_date))
-                        setStageNote('')
-                        setStageFiles([])
-                        setStageNegotiated(Number(row.negotiated_amount) ? String(row.negotiated_amount) : '')
-                        setStageModalError('')
-                      }}
+                      onOpen={() => openStageModal(row)}
                     />
                   </td>
                   <td className="px-3 py-3 text-muted">{row.owner_display || '—'}</td>
@@ -691,16 +941,7 @@ export default function PulseOpportunities() {
                       >
                         History
                       </button>
-                      <button
-                        type="button"
-                        className={btnRowEditClass}
-                        onClick={() => {
-                          setEditing(row)
-                          setForm(formFromRow(row))
-                          setFormError('')
-                          setOpen(true)
-                        }}
-                      >
+                      <button type="button" className={btnRowEditClass} onClick={() => openEditRow(row)}>
                         Edit
                       </button>
                       <button
@@ -813,10 +1054,19 @@ export default function PulseOpportunities() {
             </div>
             <div>
               <label className={labelClass}>Sales Stage*</label>
-              <select className={`${fieldClass}${fieldErrors.stage ? ' border-danger' : ''}`} value={form.stage} onChange={set('stage')} required>
-                <option value="">Select stage</option>
-                {stages.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
+              {editing ? (
+                <div className="flex items-center gap-2">
+                  <span className={`inline-flex items-center px-2.5 py-2 rounded-xl text-sm flex-1 ${STAGE_STYLE[form.stage] ?? 'bg-canvas text-muted'}`}>
+                    {form.stage}
+                    {isTerminalStage(form.stage) ? <span className="ml-2 text-[10px] uppercase tracking-wider opacity-70">Final</span> : null}
+                  </span>
+                </div>
+              ) : (
+                <select className={`${fieldClass}${fieldErrors.stage ? ' border-danger' : ''}`} value={form.stage} onChange={set('stage')} required>
+                  <option value="">Select stage</option>
+                  {stages.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              )}
               <FieldHint error={fieldErrors.stage} />
             </div>
             <SectionTitle>Amounts and dates</SectionTitle>
@@ -869,10 +1119,26 @@ export default function PulseOpportunities() {
             <div className="sm:col-span-2 rounded-2xl border border-brand/40 bg-brand-soft/30 p-3 space-y-2">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand">Follow-up</p>
               <p className="text-xs text-muted">Set the next action date — this drives reminders and pipeline follow-through.</p>
-              <div>
-                <label className={labelClass}>Follow-up Date</label>
-                <input type="date" className={fieldClass} value={form.follow_up_date} onChange={set('follow_up_date')} />
-              </div>
+              {editing ? (
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className={labelClass}>Follow-up Date</p>
+                    <p className="text-sm font-medium text-ink">{formatDate(form.follow_up_date || null)}</p>
+                  </div>
+                  {isTerminalStage(form.stage) ? (
+                    <p className="text-xs text-muted">Final stage — stage and follow-up are locked.</p>
+                  ) : (
+                    <button type="button" className={btnRowEditClass} onClick={() => openStageModal(editing)}>
+                      Update stage / follow-up
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className={labelClass}>Follow-up Date</label>
+                  <input type="date" className={fieldClass} value={form.follow_up_date} onChange={set('follow_up_date')} />
+                </div>
+              )}
             </div>
             <SectionTitle>Notes</SectionTitle>
             <div className="sm:col-span-2">
@@ -886,20 +1152,10 @@ export default function PulseOpportunities() {
                   {activities.isLoading ? (
                     <p className="text-xs text-muted">Loading history…</p>
                   ) : (activities.data ?? []).length === 0 ? (
-                    <p className="text-xs text-muted">No stage changes recorded yet.</p>
+                    <p className="text-xs text-muted">No stage or follow-up changes recorded yet.</p>
                   ) : (
                     (activities.data ?? []).map((item) => (
-                      <div key={item.id} className="rounded-xl border border-line bg-canvas px-3 py-2">
-                        <p className="text-xs font-medium text-ink">
-                          {item.from_stage || '—'} → {item.to_stage || '—'}
-                        </p>
-                        <p className="text-[11px] text-muted mt-0.5">
-                          {item.actor_name || 'System'} · {formatWhen(item.created_at)}
-                          {item.follow_up_date ? ` · Follow-up ${formatDate(item.follow_up_date)}` : ''}
-                        </p>
-                        {item.note ? <p className="text-xs text-ink mt-1">{item.note}</p> : null}
-                        <ActivityAttachments items={item.attachments} onPreview={setPreviewFile} />
-                      </div>
+                      <ActivityEntry key={item.id} item={item} onPreview={setPreviewFile} />
                     ))
                   )}
                 </div>
@@ -910,10 +1166,10 @@ export default function PulseOpportunities() {
 
       <Modal
         open={Boolean(stageModal)}
-        title="Change sales stage"
+        title="Update stage / follow-up"
         stacked
         onClose={() => {
-          if (updateStage.isPending) return
+          if (updateStage.isPending || stageConfirmOpen) return
           setStageModal(null)
           setStageModalError('')
           setStageFiles([])
@@ -923,44 +1179,9 @@ export default function PulseOpportunities() {
             type="button"
             className={btnPrimaryClass}
             disabled={updateStage.isPending}
-            onClick={() => {
-              if (!stageModal) return
-              if (!stageModal.to || stageModal.to === stageModal.from) {
-                setStageModalError('Select a new sales stage.')
-                return
-              }
-              if (!stageFollowUp.trim()) {
-                setStageModalError('Follow-up date is required.')
-                return
-              }
-              if (!stageNote.trim()) {
-                setStageModalError('Notes are required.')
-                return
-              }
-              if (stageFiles.length > 10) {
-                setStageModalError('At most 10 files can be attached.')
-                return
-              }
-              if (stageModal.to === 'Win' && stageFiles.length < 1) {
-                setStageModalError('At least one document is required when moving to Win.')
-                return
-              }
-              if (stageModal.to === 'Negotiation' && !(Number(stageNegotiated) > 0)) {
-                setStageModalError('Final negotiation value is required when moving to Negotiation.')
-                return
-              }
-              updateStage.mutate({
-                id: stageModal.id,
-                stage: stageModal.to,
-                follow_up_date: stageFollowUp,
-                stage_note: stageNote.trim(),
-                files: stageFiles,
-                negotiated_amount:
-                  stageModal.to === 'Negotiation' ? stageNegotiated.trim() : undefined,
-              })
-            }}
+            onClick={reviewStageChange}
           >
-            {updateStage.isPending ? 'Saving…' : 'Confirm stage change'}
+            {stageModal && stageModal.to === stageModal.from ? 'Review follow-up change' : 'Review stage change'}
           </button>
         }
       >
@@ -968,19 +1189,25 @@ export default function PulseOpportunities() {
           <div className="space-y-3">
             <p className="text-sm text-muted">
               Current stage: <span className="font-medium text-ink">{stageModal.from}</span>
+              {' · '}Follow-up: <span className="font-medium text-ink">{formatDate(stageModal.followUp || null)}</span>
+            </p>
+            <p className="text-xs text-muted">
+              Stages only move forward. Keep the current stage to extend the follow-up date; Win, Lost and Cancelled are final.
             </p>
             {stageModalError ? <p className="text-sm text-danger">{stageModalError}</p> : null}
             <div>
-              <label className={labelClass}>New stage*</label>
+              <label className={labelClass}>Stage*</label>
               <select
                 className={fieldClass}
                 value={stageModal.to}
-                onChange={(e) => setStageModal((prev) => (prev ? { ...prev, to: e.target.value } : prev))}
+                onChange={(e) => {
+                  const to = e.target.value
+                  setStageModal((prev) => (prev ? { ...prev, to } : prev))
+                  if (to === stageModal.from) setStageFiles([])
+                }}
               >
-                {stages.includes(stageModal.from) ? null : (
-                  <option value={stageModal.from}>{stageModal.from}</option>
-                )}
-                {stages.map((item) => (
+                <option value={stageModal.from}>{stageModal.from} (keep — extend follow-up)</option>
+                {allowedNextStages(stageModal.from).map((item) => (
                   <option key={item} value={item}>{item}</option>
                 ))}
               </select>
@@ -1008,7 +1235,9 @@ export default function PulseOpportunities() {
                 onChange={(e) => setStageFollowUp(e.target.value)}
                 required
               />
-              <p className="text-[11px] text-muted mt-1">Next follow-up</p>
+              <p className="text-[11px] text-muted mt-1">
+                {stageModal.to === stageModal.from ? 'New follow-up date — must differ from the current one' : 'Next follow-up'}
+              </p>
             </div>
             <div>
               <label className={labelClass}>Notes*</label>
@@ -1016,49 +1245,63 @@ export default function PulseOpportunities() {
                 className={`${fieldClass} min-h-24`}
                 value={stageNote}
                 onChange={(e) => setStageNote(e.target.value)}
+                placeholder={stageModal.to === stageModal.from ? 'Why is the follow-up moving? e.g. client asked to reconnect next week' : ''}
                 required
               />
             </div>
-            <div>
-              <label className={labelClass}>
-                Attachments{stageModal.to === 'Win' ? '*' : ''}
-              </label>
-              <input
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xlsx,.csv"
-                className={`${fieldClass} py-2`}
-                onChange={(event) => {
-                  const picked = Array.from(event.target.files ?? [])
-                  event.target.value = ''
-                  setStageFiles((prev) => [...prev, ...picked].slice(0, 10))
-                }}
-              />
-              <p className="text-[11px] text-muted mt-1">
-                {stageModal.to === 'Win'
-                  ? 'Required for Win · up to 10 files · 10 MB each · pdf, doc, images, xlsx, csv'
-                  : 'Optional · up to 10 files · 10 MB each · pdf, doc, images, xlsx, csv'}
-              </p>
-              {stageFiles.length > 0 ? (
-                <ul className="mt-2 space-y-1">
-                  {stageFiles.map((file, index) => (
-                    <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 text-xs text-ink">
-                      <span className="truncate">{file.name}</span>
-                      <button
-                        type="button"
-                        className="text-danger hover:underline shrink-0"
-                        onClick={() => setStageFiles((prev) => prev.filter((_, i) => i !== index))}
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
+            {stageModal.to !== stageModal.from ? (
+              <div>
+                <label className={labelClass}>
+                  Attachments{stageModal.to === 'Win' ? '*' : ''}
+                </label>
+                <input
+                  type="file"
+                  multiple
+                  accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.xlsx,.csv"
+                  className={`${fieldClass} py-2`}
+                  onChange={(event) => {
+                    const picked = Array.from(event.target.files ?? [])
+                    event.target.value = ''
+                    setStageFiles((prev) => [...prev, ...picked].slice(0, 10))
+                  }}
+                />
+                <p className="text-[11px] text-muted mt-1">
+                  {stageModal.to === 'Win'
+                    ? 'Required for Win · up to 10 files · 10 MB each · pdf, doc, images, xlsx, csv'
+                    : 'Optional · up to 10 files · 10 MB each · pdf, doc, images, xlsx, csv'}
+                </p>
+                {stageFiles.length > 0 ? (
+                  <ul className="mt-2 space-y-1">
+                    {stageFiles.map((file, index) => (
+                      <li key={`${file.name}-${index}`} className="flex items-center justify-between gap-2 text-xs text-ink">
+                        <span className="truncate">{file.name}</span>
+                        <button
+                          type="button"
+                          className="text-danger hover:underline shrink-0"
+                          onClick={() => setStageFiles((prev) => prev.filter((_, i) => i !== index))}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </Modal>
+
+      <ConfirmActionModal
+        open={Boolean(stageModal) && stageConfirmOpen}
+        title={stageModal && stageModal.to === stageModal.from ? 'Confirm follow-up change' : 'Confirm stage change'}
+        message={stageConfirmMessage}
+        details={stageConfirmDetails}
+        confirmLabel={stageModal && stageModal.to === stageModal.from ? 'Yes, update follow-up' : 'Yes, change stage'}
+        pending={updateStage.isPending}
+        onCancel={() => setStageConfirmOpen(false)}
+        onConfirm={submitStageChange}
+      />
 
       <Modal
         open={Boolean(historyRow)}
@@ -1074,20 +1317,10 @@ export default function PulseOpportunities() {
               ) : rowHistory.isError ? (
                 <p className="text-sm text-danger">{getErrorMessage(rowHistory.error, 'Could not load history.')}</p>
               ) : (rowHistory.data ?? []).length === 0 ? (
-                <p className="text-sm text-muted">No stage changes recorded yet.</p>
+                <p className="text-sm text-muted">No stage or follow-up changes recorded yet.</p>
               ) : (
                 (rowHistory.data ?? []).map((item) => (
-                  <div key={item.id} className="rounded-xl border border-line bg-canvas px-3 py-2">
-                    <p className="text-xs font-medium text-ink">
-                      {item.from_stage || '—'} → {item.to_stage || '—'}
-                    </p>
-                    <p className="text-[11px] text-muted mt-0.5">
-                      {item.actor_name || 'System'} · {formatWhen(item.created_at)}
-                      {item.follow_up_date ? ` · Follow-up ${formatDate(item.follow_up_date)}` : ''}
-                    </p>
-                    {item.note ? <p className="text-xs text-ink mt-1">{item.note}</p> : null}
-                    <ActivityAttachments items={item.attachments} onPreview={setPreviewFile} />
-                  </div>
+                  <ActivityEntry key={item.id} item={item} onPreview={setPreviewFile} />
                 ))
               )}
             </div>
@@ -1103,6 +1336,7 @@ export default function PulseOpportunities() {
         {docsRow ? (
           <div className="space-y-3">
             <p className="text-sm text-muted">{docsRow.name}</p>
+            <CorrectedDocumentsPanel opportunity={docsRow} />
             {rowDocs.isLoading ? (
               <p className="text-xs text-muted">Loading documents…</p>
             ) : rowDocs.isError ? (

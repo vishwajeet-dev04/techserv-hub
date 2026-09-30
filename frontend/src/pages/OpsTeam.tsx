@@ -9,6 +9,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { chartTick, tooltipProps } from '../lib/chartTheme'
 import { pulseApi } from '../api/pulse'
 import { getErrorMessage } from '../api/errors'
 import { useAuth } from '../hooks/useAuth'
@@ -25,15 +26,6 @@ const AVATAR_COLORS = [
   'from-amber-500 to-orange-500',
   'from-pink-500 to-rose-500',
 ] as const
-
-const chartTick = { fontSize: 11, fill: 'var(--color-muted)' }
-const tooltipStyle = {
-  background: 'var(--color-surface)',
-  border: '1px solid var(--color-line)',
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: '0 1px 2px rgb(0 0 0 / 0.06)',
-}
 
 function fmtCompact(n: number) {
   return new Intl.NumberFormat('en-IN', {
@@ -126,16 +118,16 @@ export default function OpsTeam() {
   })
 
   if (!allowed) {
-    return <p className="p-6 text-sm text-muted">Pulse CRM is not available for this role.</p>
+    return <p className="p-4 sm:p-6 text-sm text-muted">Pulse CRM is not available for this role.</p>
   }
 
   if (team.isLoading) {
-    return <p className="p-6 text-sm text-muted">Loading team performance…</p>
+    return <p className="p-4 sm:p-6 text-sm text-muted">Loading team performance…</p>
   }
 
   if (team.isError || !team.data) {
     return (
-      <p className="p-6 text-sm text-danger">
+      <p className="p-4 sm:p-6 text-sm text-danger">
         {getErrorMessage(team.error, 'Could not load team performance.')}
       </p>
     )
@@ -181,7 +173,7 @@ export default function OpsTeam() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" />
                   <XAxis type="number" tick={chartTick} allowDecimals={false} />
                   <YAxis type="category" dataKey="name" width={120} tick={chartTick} />
-                  <Tooltip contentStyle={tooltipStyle} />
+                  <Tooltip {...tooltipProps} />
                   <Bar dataKey="total_leads" name="Leads" fill="var(--color-brand)" radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -198,8 +190,8 @@ export default function OpsTeam() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" />
                   <XAxis type="number" tick={chartTick} tickFormatter={(v) => fmtCompact(Number(v))} />
                   <YAxis type="category" dataKey="name" width={120} tick={chartTick} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(value) => fmtMoney(Number(value))} />
-                  <Bar dataKey="won_value" name="Won value" fill="#f59e0b" radius={[0, 6, 6, 0]} />
+                  <Tooltip {...tooltipProps} formatter={(value) => fmtMoney(Number(value))} />
+                  <Bar dataKey="won_value" name="Won value" fill="var(--color-chart-3)" radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -278,7 +270,7 @@ function Kpi({
     )
   }
   const top = edge === 'emerald' ? 'border-t-emerald-500' : 'border-t-brand'
-  const iconWrap = edge === 'emerald' ? 'bg-emerald-50 text-emerald-600' : 'bg-brand-soft text-brand'
+  const iconWrap = edge === 'emerald' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-300' : 'bg-brand-soft text-brand'
   return (
     <div className={`rounded-2xl p-5 border border-line bg-surface/80 backdrop-blur-md shadow-sm border-t-2 ${top}`}>
       <div className="flex items-center gap-2">

@@ -18,6 +18,7 @@ from apps.pulse.serializers import (
     ReminderSerializer,
 )
 from apps.pulse.services import pulse_service
+from apps.users.models import UserRole
 from common.permissions.roles import IsSalesOrAbove
 
 logger = logging.getLogger(__name__)
@@ -188,6 +189,38 @@ class OpportunityDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_destroy(self, instance):
         pulse_service.delete_opportunity(instance)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsSalesOrAbove])
+@parser_classes([MultiPartParser, FormParser])
+def opportunity_documents(request, pk):
+    try:
+        opportunity = pulse_service.get_opportunity(pk)
+    except Opportunity.DoesNotExist as exc:
+        raise Http404('Opportunity not found.') from exc
+    is_owner = opportunity.owner_id is not None and opportunity.owner_id == request.user.id
+    if not is_owner and request.user.role not in (UserRole.ADMIN, UserRole.MANAGEMENT):
+        return Response(
+            {
+                'error': True,
+                'message': 'Only the opportunity owner, Admin or Management can upload corrected documents.',
+                'details': None,
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    activity = pulse_service.add_opportunity_documents(
+        opportunity,
+        _collect_stage_files(request),
+        note=request.data.get('note') or '',
+        actor=request.user,
+    )
+    logger.info('Opportunity documents updated: %s activity=%s user=%s', opportunity.pk, activity.pk, request.user.id)
+    activity = pulse_service.list_opportunity_activities(opportunity.pk).get(pk=activity.pk)
+    return Response(
+        OpportunityActivitySerializer(activity, context={'request': request}).data,
+        status=status.HTTP_201_CREATED,
+    )
 
 
 class OpportunityActivityListView(generics.ListAPIView):

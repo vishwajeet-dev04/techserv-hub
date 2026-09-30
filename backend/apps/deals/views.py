@@ -6,8 +6,9 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Deal, PoWorkflow
-from .po_constants import MAX_IMPORT_BYTES
+from .models import Deal, PoDocumentIssue, PoWorkflow
+from .po_constants import MAX_IMPORT_BYTES, PO_ISSUE_REASONS
+from .po_issue_service import create_po_issue, list_po_issues, resolve_po_issue
 from .po_service import (
     approve_po_workflow,
     create_po_workflow,
@@ -20,9 +21,15 @@ from .po_service import (
     template_po_xlsx,
     update_po_workflow,
 )
-from .serializers import DealListSerializer, DealDetailSerializer, DealActivitySerializer, PoWorkflowSerializer
+from .serializers import (
+    DealActivitySerializer,
+    DealDetailSerializer,
+    DealListSerializer,
+    PoDocumentIssueSerializer,
+    PoWorkflowSerializer,
+)
 from .services.deal_service import get_deal, get_deal_activities, get_deal_list, get_pipeline_summary
-from common.permissions.roles import IsSalesOrAbove
+from common.permissions.roles import IsManagementOrAbove, IsSalesOrAbove
 
 logger = logging.getLogger(__name__)
 
@@ -235,3 +242,44 @@ def po_workflow_import(request):
         result['created'], len(result['errors']), request.user.id, request.path,
     )
     return Response(result)
+
+
+class PoDocumentIssueListCreateView(generics.ListCreateAPIView):
+    serializer_class = PoDocumentIssueSerializer
+    permission_classes = [IsAuthenticated, IsSalesOrAbove]
+    pagination_class = None
+
+    def get_queryset(self):
+        params = self.request.query_params
+        return list_po_issues(opportunity=params.get('opportunity'), status=params.get('status'))
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        issue = create_po_issue(
+            opportunity_id=data.get('opportunity'),
+            reasons=data.get('reasons') or [],
+            attachment_ids=data.get('attachment_ids') or [],
+            note=data.get('note') or '',
+            actor=request.user,
+        )
+        logger.info('PO document issue raised: %s opportunity=%s user=%s', issue.pk, issue.opportunity_id, request.user.id)
+        issue = list_po_issues().get(pk=issue.pk)
+        return Response(PoDocumentIssueSerializer(issue).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsSalesOrAbove])
+def po_issue_reasons(request):
+    return Response([{'code': code, 'label': label} for code, label in PO_ISSUE_REASONS.items()])
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsManagementOrAbove])
+def po_issue_resolve(request, pk):
+    try:
+        issue = list_po_issues().get(pk=pk)
+    except PoDocumentIssue.DoesNotExist as exc:
+        raise Http404('Issue not found.') from exc
+    resolved = resolve_po_issue(issue, actor=request.user, resolution_note=request.data.get('resolution_note') or '')
+    logger.info('PO document issue resolved manually: %s user=%s', resolved.pk, request.user.id)
+    return Response(PoDocumentIssueSerializer(resolved).data)

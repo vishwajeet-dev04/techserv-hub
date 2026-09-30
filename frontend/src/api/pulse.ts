@@ -114,6 +114,13 @@ export const pulseApi = {
     const response = await apiClient.patch<PulseOpportunity>(`/pulse/opportunities/${id}/`, compact(data))
     return response.data
   },
+  addOpportunityDocuments: async (id: string, files: File[], note: string): Promise<PulseOpportunityActivity> => {
+    const form = new FormData()
+    for (const file of files) form.append('files', file)
+    form.append('note', note)
+    const response = await apiClient.post<PulseOpportunityActivity>(`/pulse/opportunities/${id}/documents/`, form)
+    return response.data
+  },
   listOpportunityActivities: async (id: string): Promise<PulseOpportunityActivity[]> => {
     const response = await apiClient.get<PulseOpportunityActivity[] | PaginatedResponse<PulseOpportunityActivity>>(
       `/pulse/opportunities/${id}/activities/`,

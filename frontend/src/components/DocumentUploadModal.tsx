@@ -91,8 +91,8 @@ export default function DocumentUploadModal({
     >
       <form id="document-form" onSubmit={handleSubmit} className="space-y-4">
         {error ? (
-          <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
-            <p className="text-sm text-red-600">{error}</p>
+          <div className="px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800">
+            <p className="text-sm text-danger">{error}</p>
           </div>
         ) : null}
 
@@ -104,7 +104,7 @@ export default function DocumentUploadModal({
             className={`${fieldClass} file:mr-3 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-1.5 file:text-xs file:text-white`}
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
-          {file ? <p className="text-xs text-[#6e6e73] mt-1.5">{file.name}</p> : null}
+          {file ? <p className="text-xs text-muted mt-1.5">{file.name}</p> : null}
         </div>
 
         <div>

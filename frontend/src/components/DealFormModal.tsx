@@ -123,8 +123,8 @@ export default function DealFormModal({ open, onClose, companyId }: DealFormModa
     >
       <form id="deal-form" onSubmit={handleSubmit} className="space-y-4">
         {error ? (
-          <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
-            <p className="text-sm text-red-600">{error}</p>
+          <div className="px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800">
+            <p className="text-sm text-danger">{error}</p>
           </div>
         ) : null}
 
@@ -140,7 +140,7 @@ export default function DealFormModal({ open, onClose, companyId }: DealFormModa
               ))}
             </select>
             {companies.length === 0 ? (
-              <p className="text-xs text-amber-700 mt-1.5">Add a company first on the Business page.</p>
+              <p className="text-xs text-warning mt-1.5">Add a company first on the Business page.</p>
             ) : null}
           </div>
         )}

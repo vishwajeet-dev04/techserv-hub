@@ -9,17 +9,20 @@ PO_WORKFLOW_HEADERS = [
     'Agreement',
     'Start Date',
     'End Date',
-    'Expiry',
+    'Hand Over Date',
     'Total value',
     'Value per Invoice',
     'Billing Cycle',
+    'Milestone Details',
     'Billing Due',
 ]
 
 BILLING_ENTITIES = ['India', 'SG']
 PO_SERVICE_PILLARS = ['AIDA', 'FinOps', 'Loan', 'PRAS', 'BizOps', 'Sprouts', 'Consultancy']
 AGREEMENTS = ['Yes', 'NA']
-BILLING_CYCLES = ['Monthly', 'Quarterly', 'One-time', 'Event']
+MILESTONE_CYCLE = 'Milestone'
+LEGACY_MILESTONE_CYCLE = 'Event'
+BILLING_CYCLES = ['Monthly', 'Quarterly', 'One-time', MILESTONE_CYCLE]
 BILLING_DUES = [
     'Event Specific',
     '31st of Month',
@@ -28,3 +31,14 @@ BILLING_DUES = [
     '15th of Month',
     '15th of November',
 ]
+
+PO_ISSUE_REASONS = {
+    'WRONG_DOCUMENT': 'Wrong document uploaded',
+    'PO_MISSING': 'PO copy missing',
+    'NOT_SIGNED': 'Not signed or stamped',
+    'AMOUNT_MISMATCH': 'Amount does not match opportunity',
+    'CUSTOMER_MISMATCH': 'Customer or billing entity mismatch',
+    'WRONG_DATES': 'Dates incorrect or expired',
+    'UNREADABLE': 'File unreadable or corrupt',
+    'OTHER': 'Other (explain in note)',
+}

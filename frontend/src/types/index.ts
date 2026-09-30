@@ -109,6 +109,7 @@ export interface PoWorkflow {
   total_value: number | null
   value_per_invoice: number | null
   billing_cycle: string
+  milestone_details: string
   billing_due: string
   status: 'Active' | 'Completed'
   po_display: string
@@ -433,6 +434,7 @@ export interface BankPositionAccount {
   transfer_out?: number
   revenue_receipts?: number
   all_outflows?: number
+  receipts?: number | null
   disbursements?: number | null
   transfer_to_ops?: number | null
   closing: number | null
@@ -526,13 +528,17 @@ export interface OpsPayable {
   tds_amount: number
   total_amount: number
   payable_amount: number
+  invoice_date: string | null
   due_date: string | null
   status: string
   notes: string
 }
 
+export type CashflowAccount = 'CURRENT' | 'SEED'
+
 export interface CashflowRow {
   id: string
+  account: CashflowAccount
   entry_date: string
   direction: 'INFLOW' | 'OUTFLOW'
   bucket: string
@@ -551,7 +557,15 @@ export interface MisImportResult {
   errors: Array<{ sheet?: string; row?: number; message: string }>
 }
 
+export interface LedgerCashflowCard {
+  category: string
+  amount: number
+  direction: 'Inflow' | 'Outflow'
+}
+
 export interface LedgerCashflowSummary {
+  account: CashflowAccount
+  has_entries: boolean
   total_inflow: number
   total_outflow: number
   net: number
@@ -560,17 +574,9 @@ export interface LedgerCashflowSummary {
     inflow: number
     outflow: number
     net: number
-    amount: number
-    direction: string
   }>
-  cards: Array<{
-    category: string
-    amount: number
-    direction: string
-    inflow: number
-    outflow: number
-    net: number
-  }>
+  inflow_cards: LedgerCashflowCard[]
+  outflow_cards: LedgerCashflowCard[]
 }
 
 export interface LedgerPayablesSummary {
@@ -620,6 +626,8 @@ export type LedgerListParams = {
   status?: string
   direction?: string
   category?: string
+  account?: CashflowAccount
+  page?: number
   page_size?: number
 }
 
@@ -721,8 +729,35 @@ export interface PulseOpportunity {
   linked_po_count: number
   linked_po_value: number
   linked_pos: { id: string; po_number: string; status: string; total_value: number }[]
+  open_po_issue_count: number
   created_at: string
   updated_at: string
+}
+
+export interface PoIssueReason {
+  code: string
+  label: string
+}
+
+export interface PoDocumentIssue {
+  id: string
+  opportunity: string
+  opportunity_prospect_number: string
+  opportunity_name: string
+  raised_by: string | null
+  raised_by_name: string | null
+  reasons: string[]
+  reason_labels: string[]
+  attachments: { id: string; file_name: string }[]
+  note: string
+  status: 'OPEN' | 'RESOLVED'
+  resolved_by: string | null
+  resolved_by_name: string | null
+  resolved_at: string | null
+  resolution_note: string
+  resolution_activity: string | null
+  email_sent_at: string | null
+  created_at: string
 }
 
 export interface PulseOpportunityActivityAttachment {
@@ -740,7 +775,7 @@ export interface PulseOpportunityActivity {
   opportunity: string
   actor: string | null
   actor_name: string | null
-  action: 'STAGE_CHANGE' | 'NOTE' | 'FIELD_UPDATE'
+  action: 'STAGE_CHANGE' | 'FOLLOW_UP_CHANGE' | 'DOCUMENT_UPDATE' | 'NOTE' | 'FIELD_UPDATE'
   from_stage: string
   to_stage: string
   note: string
@@ -757,7 +792,7 @@ export interface PulseOpsUpdate {
   company_name: string | null
   actor: string | null
   actor_name: string | null
-  action: 'STAGE_CHANGE' | 'NOTE' | 'FIELD_UPDATE'
+  action: 'STAGE_CHANGE' | 'FOLLOW_UP_CHANGE' | 'DOCUMENT_UPDATE' | 'NOTE' | 'FIELD_UPDATE'
   from_stage: string
   to_stage: string
   note: string
@@ -902,5 +937,67 @@ export interface PulseSettings {
 
 export interface PulseImportResult {
   created: number
+  updated?: number
   errors: { row: number; message: string }[]
+}
+
+export interface FinanceClient {
+  id: string
+  name: string
+  service_line: string
+  contact_person: string
+  email: string
+  mobile: string
+  pan: string
+  gstin: string
+  msme_registered: boolean
+  msme_number: string
+  billing_address: string
+  city: string
+  state: string
+  payment_terms_days: number | null
+  is_active: boolean
+  notes: string
+  company: string | null
+  company_name: string
+  active_pos: number
+  total_invoiced: number
+  total_paid: number
+  created_at: string
+  updated_at: string
+}
+
+export interface FinanceVendor {
+  id: string
+  name: string
+  category: string
+  contact_person: string
+  email: string
+  mobile: string
+  pan: string
+  gstin: string
+  msme_registered: boolean
+  msme_number: string
+  tds_applicable: boolean
+  tds_section: string
+  tds_rate: string | null
+  address: string
+  city: string
+  state: string
+  bank_account_name: string
+  bank_account_number: string
+  ifsc: string
+  is_active: boolean
+  notes: string
+  total_payable: number
+  outstanding: number
+  created_at: string
+  updated_at: string
+}
+
+export interface MasterDataListParams {
+  search?: string
+  active?: 'true' | 'false' | ''
+  page?: number
+  page_size?: number
 }

@@ -137,7 +137,7 @@ export default function PulseContacts() {
     setFieldErrors({})
     if (save.isPending) return
     setFormError('')
-    save.mutate()
+    save.mutate(normalizeContactForm(form))
   }
 
   const rows = list.data?.results ?? []
@@ -154,7 +154,7 @@ export default function PulseContacts() {
   ]
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto">
+    <div className="p-4 sm:p-6 max-w-[1600px] mx-auto">
       <PulsePageHeader
         title="Contacts"
         subtitle="Manage your customer relationships."
@@ -202,6 +202,47 @@ export default function PulseContacts() {
           minWidth="min-w-[1400px]"
           title="Contacts"
           count={rows.length}
+          mobileCards={pageRows.map((row) => (
+            <div key={row.id} className="px-4 py-3.5 space-y-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-ink truncate">{row.name}</p>
+                <p className="text-xs text-muted truncate">
+                  {[row.designation, row.company_name].filter(Boolean).join(' · ')}
+                </p>
+              </div>
+              <div className="text-xs space-y-1">
+                {row.email ? (
+                  <a href={`mailto:${row.email}`} className="block text-brand truncate">
+                    {row.email}
+                  </a>
+                ) : null}
+                {row.phone ? (
+                  <a href={`tel:${row.phone}`} className="block text-muted">
+                    {row.phone}
+                  </a>
+                ) : null}
+                <p className="text-subtle truncate">
+                  {[row.city, row.state, row.country].filter(Boolean).join(', ') || '—'}
+                </p>
+              </div>
+              <div className="flex gap-2 pt-0.5">
+                <button type="button" className={`${btnRowEditClass} !py-2`} onClick={() => openEdit(row)}>
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className={`${btnRowDeleteClass} !py-2`}
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    setDeleteError('')
+                    setPendingDelete(row)
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
           footer={
             <PulsePaginationFooter
               page={page}

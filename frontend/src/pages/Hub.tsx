@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
-import { ArrowRight, FileText, GitBranch, LayoutDashboard, Users } from 'lucide-react'
+import { ArrowRight, FileText, LayoutDashboard, Users } from 'lucide-react'
+// import { GitBranch } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import type { ReactNode } from 'react'
 
@@ -21,6 +22,8 @@ const cards: {
     icon: <LayoutDashboard className="w-5 h-5" strokeWidth={2} />,
     theme: 'purple',
   },
+  // Hidden: Deal-to-Billing Ops now lives inside Pulse. Restore with the GitBranch import above.
+  /*
   {
     module: 'deals',
     to: '/ops',
@@ -29,6 +32,7 @@ const cards: {
     icon: <GitBranch className="w-5 h-5" strokeWidth={2} />,
     theme: 'green',
   },
+  */
   {
     module: 'finance',
     to: '/finance',
@@ -102,26 +106,26 @@ export default function Hub() {
               : 'Could not load your account. Is the API running, and are you still logged in?'}
           </p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {visible.map((card) => {
               const theme = THEME[card.theme]
               return (
                 <Link
                   key={card.to}
                   to={card.to}
-                  className={`group flex items-start gap-4 bg-surface/80 backdrop-blur-md border border-line rounded-2xl p-5 shadow-sm transition-all ${theme.hover}`}
+                  className={`group flex items-start gap-4 sm:flex-col sm:aspect-square bg-surface/80 backdrop-blur-md border border-line rounded-2xl p-5 sm:p-6 shadow-sm transition-all ${theme.hover}`}
                 >
                   <div
-                    className={`w-12 h-12 rounded-2xl ${theme.tile} ${theme.icon} flex items-center justify-center shrink-0`}
+                    className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl ${theme.tile} ${theme.icon} flex items-center justify-center shrink-0`}
                   >
                     {card.icon}
                   </div>
-                  <div className="min-w-0 flex-1 pt-0.5">
-                    <h2 className="text-base font-semibold text-ink">{card.title}</h2>
+                  <div className="min-w-0 flex-1 pt-0.5 sm:flex-none sm:pt-2">
+                    <h2 className="text-base sm:text-lg font-semibold text-ink">{card.title}</h2>
                     <p className="text-sm text-muted mt-1 leading-relaxed">{card.body}</p>
                   </div>
                   <span
-                    className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors mt-1 ${theme.arrow}`}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors mt-1 sm:mt-auto sm:self-end ${theme.arrow}`}
                     aria-hidden
                   >
                     <ArrowRight className="w-4 h-4" strokeWidth={2} />

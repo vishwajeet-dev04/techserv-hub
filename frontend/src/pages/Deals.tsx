@@ -9,7 +9,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { ChevronDown, Eye, FileText } from 'lucide-react'
+import { chartTick, tooltipProps } from '../lib/chartTheme'
+import { AlertTriangle, ChevronDown, Eye, FileText } from 'lucide-react'
 import { dealsApi } from '../api/deals'
 import { pulseApi } from '../api/pulse'
 import { getErrorMessage } from '../api/errors'
@@ -30,7 +31,9 @@ import DocumentPreviewModal, {
 } from '../components/DocumentPreviewModal'
 import PulseExcelBar from '../components/PulseExcelBar'
 import { useDateRange } from '../hooks/useDateRange'
+import ReportPoIssueModal from '../components/ReportPoIssueModal'
 import type {
+  PoDocumentIssue,
   PoWorkflow,
   PoWorkflowDashboard,
   PulseOpportunity,
@@ -39,19 +42,11 @@ import type {
 } from '../types'
 
 const filterField = `${fieldClass} !w-[11rem]`
-const chartTick = { fontSize: 11, fill: 'var(--color-muted)' }
-const tooltipStyle = {
-  background: 'var(--color-surface)',
-  border: '1px solid var(--color-line)',
-  borderRadius: 12,
-  fontSize: 12,
-  boxShadow: '0 1px 2px rgb(0 0 0 / 0.06)',
-}
-
 const BILLING_ENTITIES = ['India', 'SG']
 const SERVICE_PILLARS = ['AIDA', 'FinOps', 'Loan', 'PRAS', 'BizOps', 'Sprouts', 'Consultancy']
 const AGREEMENTS = ['Yes', 'NA']
-const BILLING_CYCLES = ['Monthly', 'Quarterly', 'One-time', 'Event']
+const MILESTONE_CYCLE = 'Milestone'
+const BILLING_CYCLES = ['Monthly', 'Quarterly', 'One-time', MILESTONE_CYCLE]
 const BILLING_DUES = [
   'Event Specific',
   '31st of Month',
@@ -74,6 +69,7 @@ const emptyForm = {
   total_value: '',
   value_per_invoice: '',
   billing_cycle: '',
+  milestone_details: '',
   billing_due: '',
   opportunity: '',
   prospect_number: '',
@@ -104,7 +100,8 @@ function fromRow(row: PoWorkflow): FormValues {
     expiry: row.expiry ?? '',
     total_value: row.total_value == null ? '' : String(row.total_value),
     value_per_invoice: row.value_per_invoice == null ? '' : String(row.value_per_invoice),
-    billing_cycle: row.billing_cycle,
+    billing_cycle: row.billing_cycle === 'Event' ? MILESTONE_CYCLE : row.billing_cycle,
+    milestone_details: row.milestone_details ?? '',
     billing_due: row.billing_due,
     opportunity: row.opportunity ?? '',
     prospect_number: row.opportunity_prospect_number ?? '',
@@ -163,9 +160,9 @@ function collectWinAttachments(activities: PulseOpportunityActivity[]): PulseOpp
       }
     }
   }
-  // Prefer attachments on the Win transition; fall back to all activity files
+  // Prefer Win-stage files (the Win transition plus corrected uploads, newest first); fall back to all activity files
   const winOnly = activities
-    .filter((a) => a.to_stage === 'Win')
+    .filter((a) => a.to_stage === 'Win' && (a.action === 'STAGE_CHANGE' || a.action === 'DOCUMENT_UPDATE'))
     .flatMap((a) => a.attachments ?? [])
     .filter((f) => f.url)
   return winOnly.length ? winOnly : files
@@ -189,6 +186,7 @@ export default function Deals() {
   const [selectedWinDoc, setSelectedWinDoc] = useState<PreviewableFile | null>(null)
   const [wonOpen, setWonOpen] = useState(false)
   const [opsOpen, setOpsOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
   const allowed = hasAccess('deals')
   const periodHint = 'In selected range'
 
@@ -215,6 +213,22 @@ export default function Deals() {
     queryFn: () => pulseApi.listOpportunities({ stage: 'Win' }),
     enabled: allowed,
   })
+
+  const openIssues = useQuery({
+    queryKey: ['po-issues', 'OPEN'],
+    queryFn: () => dealsApi.listPoIssues({ status: 'OPEN' }),
+    enabled: allowed,
+  })
+
+  const openIssueByOpp = useMemo(() => {
+    const map = new Map<string, PoDocumentIssue>()
+    for (const issue of openIssues.data ?? []) {
+      if (!map.has(issue.opportunity)) map.set(issue.opportunity, issue)
+    }
+    return map
+  }, [openIssues.data])
+
+  const sourceIssue = sourceOpp ? openIssueByOpp.get(sourceOpp.id) ?? null : null
 
   const winLogs = useQuery({
     queryKey: ['pulse-opportunity-activities', logOppId],
@@ -255,6 +269,7 @@ export default function Deals() {
     await queryClient.invalidateQueries({ queryKey: ['finance-ops-summary'] })
     await queryClient.invalidateQueries({ queryKey: ['pulse-opportunities'] })
     await queryClient.invalidateQueries({ queryKey: ['pulse-ops-updates'] })
+    await queryClient.invalidateQueries({ queryKey: ['po-issues'] })
   }
 
   const save = useMutation({
@@ -269,10 +284,10 @@ export default function Deals() {
     onSuccess: async () => {
       await invalidate()
       closeForm()
-      notify.success(editing ? 'PO updated.' : 'PO created.')
+      notify.success(editing ? 'PO updated.' : 'PO validated.')
     },
     onError: (err) => {
-      const message = getErrorMessage(err, editing ? 'Could not update PO.' : 'Could not create PO.')
+      const message = getErrorMessage(err, editing ? 'Could not update PO.' : 'Could not validate PO.')
       setFormError(message)
       notify.error(message)
     },
@@ -304,6 +319,7 @@ export default function Deals() {
 
   const closeForm = () => {
     setOpen(false)
+    setReportOpen(false)
     setEditing(null)
     setSourceOpp(null)
     setSelectedWinDoc(null)
@@ -340,22 +356,26 @@ export default function Deals() {
       setFormError(`${missing[1]} is required.`)
       return
     }
+    if (form.billing_cycle === MILESTONE_CYCLE && !form.milestone_details.trim()) {
+      setFormError('Milestone Details is required for Milestone billing.')
+      return
+    }
     if (save.isPending) return
     setFormError('')
     save.mutate()
   }
 
   if (!allowed) {
-    return <p className="p-6 text-sm text-muted">PO & Contracts is not available for this role.</p>
+    return <p className="p-4 sm:p-6 text-sm text-muted">PO & Contracts is not available for this role.</p>
   }
 
   if (dash.isLoading) {
-    return <p className="p-6 text-sm text-muted">Loading PO & Contracts…</p>
+    return <p className="p-4 sm:p-6 text-sm text-muted">Loading PO & Contracts…</p>
   }
 
   if (dash.isError || !dash.data) {
     return (
-      <p className="p-6 text-sm text-danger">
+      <p className="p-4 sm:p-6 text-sm text-danger">
         {getErrorMessage(dash.error, 'Could not load PO & Contracts.')}
       </p>
     )
@@ -466,7 +486,7 @@ export default function Deals() {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" />
                 <XAxis type="number" tick={chartTick} tickFormatter={(v) => fmtCompact(Number(v))} />
                 <YAxis type="category" dataKey="name" width={100} tick={chartTick} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(value) => fmtMoney(Number(value))} />
+                <Tooltip {...tooltipProps} formatter={(value) => fmtMoney(Number(value))} />
                 <Bar dataKey="value" name="Value" fill="var(--color-brand)" radius={[0, 6, 6, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -487,10 +507,10 @@ export default function Deals() {
           <p className="px-4 py-8 text-sm text-muted">No PO workflow rows in this filter. Import the sheet or add a row.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] text-sm">
+            <table className="table-pin-first w-full min-w-[1080px] text-sm">
               <thead>
                 <tr className="text-left text-[11px] uppercase tracking-wider text-muted bg-canvas border-b border-line">
-                  {['PO #', 'Customer', 'Prospect', 'Category', 'Total value', 'Monthly', 'Terms', 'Start', 'End', 'Expiry', 'Status', ''].map((h) => (
+                  {['PO #', 'Customer', 'Prospect', 'Category', 'Total value', 'Monthly', 'Terms', 'Start', 'End', 'Hand Over', 'Status', ''].map((h) => (
                     <th key={h || 'actions'} className="px-4 py-3 font-semibold">{h}</th>
                   ))}
                 </tr>
@@ -506,7 +526,9 @@ export default function Deals() {
                     <td className="px-4 py-3 text-muted">{row.service_pillar}</td>
                     <td className="px-4 py-3 text-ink whitespace-nowrap">{fmtMoney(row.total_value)}</td>
                     <td className="px-4 py-3 text-muted whitespace-nowrap">{fmtMoney(row.value_per_invoice)}</td>
-                    <td className="px-4 py-3 text-muted">{row.billing_cycle}</td>
+                    <td className="px-4 py-3 text-muted" title={row.milestone_details || undefined}>
+                      {row.billing_cycle === 'Event' ? MILESTONE_CYCLE : row.billing_cycle}
+                    </td>
                     <td className="px-4 py-3 text-muted whitespace-nowrap">{day(row.start_date)}</td>
                     <td className="px-4 py-3 text-muted whitespace-nowrap">{day(row.end_date)}</td>
                     <td className="px-4 py-3 text-muted whitespace-nowrap">{day(row.expiry)}</td>
@@ -516,7 +538,7 @@ export default function Deals() {
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <div className="inline-flex items-center gap-2">
                         {row.finance_approved ? (
-                          <span className="inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                             Approved
                           </span>
                         ) : (
@@ -635,8 +657,13 @@ export default function Deals() {
                         {' · '}
                         {day(opp.expected_close_date)}
                         {hasPo ? (
-                          <span className="ml-2 inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-100">
+                          <span className="ml-2 inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800">
                             PO linked ({opp.linked_po_count})
+                          </span>
+                        ) : null}
+                        {openIssueByOpp.has(opp.id) ? (
+                          <span className="ml-2 inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                            Issue open
                           </span>
                         ) : null}
                       </p>
@@ -675,7 +702,11 @@ export default function Deals() {
                         (winLogs.data ?? []).map((item) => (
                           <div key={item.id} className="rounded-lg border border-line bg-surface/80 backdrop-blur-md px-3 py-2">
                             <p className="text-xs font-medium text-ink">
-                              {item.from_stage || '—'} → {item.to_stage || '—'}
+                              {item.action === 'DOCUMENT_UPDATE'
+                                ? 'Documents updated'
+                                : item.action === 'FOLLOW_UP_CHANGE'
+                                  ? `Follow-up extended to ${day(item.follow_up_date)}`
+                                  : `${item.from_stage || '—'} → ${item.to_stage || '—'}`}
                             </p>
                             <p className="text-[11px] text-muted mt-0.5">
                               {item.actor_name || 'System'} · {formatWhen(item.created_at)}
@@ -719,9 +750,22 @@ export default function Deals() {
         onClose={() => !save.isPending && closeForm()}
         wide
         footer={
-          <button type="submit" form="po-workflow-form" disabled={save.isPending} className={btnPrimaryClass}>
-            {save.isPending ? 'Saving…' : editing ? 'Update PO' : 'Create PO'}
-          </button>
+          <>
+            {sourceOpp && !editing ? (
+              <button
+                type="button"
+                className={`${btnSecondaryClass} mr-auto text-danger hover:text-danger hover:border-danger`}
+                disabled={save.isPending}
+                onClick={() => setReportOpen(true)}
+              >
+                <AlertTriangle className="w-4 h-4" strokeWidth={2} aria-hidden />
+                Report issue
+              </button>
+            ) : null}
+            <button type="submit" form="po-workflow-form" disabled={save.isPending} className={btnPrimaryClass}>
+              {save.isPending ? (editing ? 'Saving…' : 'Validating…') : editing ? 'Update PO' : 'Validate PO'}
+            </button>
+          </>
         }
       >
         <form
@@ -774,6 +818,16 @@ export default function Deals() {
 
           <div className="grid sm:grid-cols-2 gap-3 content-start">
             {formError ? <p className="sm:col-span-2 text-sm text-danger">{formError}</p> : null}
+            {sourceIssue && !editing ? (
+              <div className="sm:col-span-2 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2.5 text-sm text-amber-800 dark:text-amber-200">
+                <p className="font-medium">
+                  Issue reported by {sourceIssue.raised_by_name || 'Ops'} on {formatWhen(sourceIssue.created_at)}
+                </p>
+                <p className="text-xs mt-0.5">
+                  {sourceIssue.reason_labels.join(', ')}. Waiting for corrected documents from the owner.
+                </p>
+              </div>
+            ) : null}
             {(sourceOpp || form.prospect_number) ? (
               <div className="sm:col-span-2">
                 <label className={labelClass}>Prospect No</label>
@@ -788,14 +842,53 @@ export default function Deals() {
             <SelectField label="Agreement*" value={form.agreement} options={AGREEMENTS} onChange={(value) => setForm((prev) => ({ ...prev, agreement: value }))} />
             <Field label="Start Date" type="date" value={form.start_date} onChange={(value) => setForm((prev) => ({ ...prev, start_date: value }))} />
             <Field label="End Date" type="date" value={form.end_date} onChange={(value) => setForm((prev) => ({ ...prev, end_date: value }))} />
-            <Field label="Expiry" type="date" value={form.expiry} onChange={(value) => setForm((prev) => ({ ...prev, expiry: value }))} />
+            <Field label="Hand Over Date" type="date" value={form.expiry} onChange={(value) => setForm((prev) => ({ ...prev, expiry: value }))} />
             <Field label="Total value" value={form.total_value} onChange={(value) => setForm((prev) => ({ ...prev, total_value: value }))} />
             <Field label="Value per Invoice" value={form.value_per_invoice} onChange={(value) => setForm((prev) => ({ ...prev, value_per_invoice: value }))} />
-            <SelectField label="Billing Cycle*" value={form.billing_cycle} options={BILLING_CYCLES} onChange={(value) => setForm((prev) => ({ ...prev, billing_cycle: value }))} />
+            <SelectField
+              label="Billing Cycle*"
+              value={form.billing_cycle}
+              options={BILLING_CYCLES}
+              onChange={(value) =>
+                setForm((prev) => ({
+                  ...prev,
+                  billing_cycle: value,
+                  milestone_details: value === MILESTONE_CYCLE ? prev.milestone_details : '',
+                }))
+              }
+            />
             <SelectField label="Billing Due*" value={form.billing_due} options={BILLING_DUES} allowCustom onChange={(value) => setForm((prev) => ({ ...prev, billing_due: value }))} />
+            {form.billing_cycle === MILESTONE_CYCLE ? (
+              <div className="sm:col-span-2">
+                <label className={labelClass}>Milestone Details*</label>
+                <input
+                  className={fieldClass}
+                  maxLength={255}
+                  value={form.milestone_details}
+                  placeholder="e.g. 40% on UAT sign-off, 60% on go-live"
+                  onChange={(e) => setForm((prev) => ({ ...prev, milestone_details: e.target.value }))}
+                />
+              </div>
+            ) : null}
           </div>
         </form>
       </Modal>
+
+      {reportOpen && sourceOpp ? (
+        <ReportPoIssueModal
+          opportunityId={sourceOpp.id}
+          prospectNumber={sourceOpp.prospect_number}
+          ownerName={sourceOpp.owner_display}
+          documents={winDocs}
+          defaultDocumentId={selectedWinDoc?.id ?? null}
+          onClose={() => setReportOpen(false)}
+          onReported={async () => {
+            setReportOpen(false)
+            await queryClient.invalidateQueries({ queryKey: ['po-issues'] })
+            await queryClient.invalidateQueries({ queryKey: ['pulse-opportunities'] })
+          }}
+        />
+      ) : null}
 
       <DocumentPreviewModal
         open={Boolean(previewFile)}
@@ -917,7 +1010,7 @@ function StatusPill({ status }: { status: 'Active' | 'Completed' }) {
     <span
       className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-medium ${
         status === 'Completed'
-          ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-800'
           : 'bg-brand-soft text-brand border border-brand/20'
       }`}
     >

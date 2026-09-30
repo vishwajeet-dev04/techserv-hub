@@ -46,34 +46,34 @@ const TrendingIcon = () => (
 const statusConfig: Record<CompanyStatus, { label: string; className: string; dot: string }> = {
   CUSTOMER: {
     label: 'Customer',
-    className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    className: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800',
     dot: 'bg-emerald-600',
   },
   PROSPECT: {
     label: 'Prospect',
-    className: 'bg-blue-50 text-blue-700 border border-blue-200',
+    className: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800',
     dot: 'bg-blue-600',
   },
   PARTNER: {
     label: 'Partner',
-    className: 'bg-violet-50 text-violet-700 border border-violet-200',
+    className: 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800',
     dot: 'bg-violet-600',
   },
   INACTIVE: {
     label: 'Inactive',
-    className: 'bg-[#f5f5f7] text-[#aeaeb2] border border-[#e5e5ea]',
-    dot: 'bg-[#aeaeb2]',
+    className: 'bg-canvas text-subtle border border-line',
+    dot: 'bg-subtle',
   },
 }
 
 const stageConfig: Record<DealStage, { label: string; className: string; dot: string }> = {
-  LEAD: { label: 'Lead', className: 'bg-slate-100 text-slate-600 border border-slate-200', dot: 'bg-slate-500' },
-  QUALIFIED: { label: 'Qualified', className: 'bg-blue-50 text-blue-700 border border-blue-200', dot: 'bg-blue-500' },
+  LEAD: { label: 'Lead', className: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800', dot: 'bg-slate-500' },
+  QUALIFIED: { label: 'Qualified', className: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800', dot: 'bg-blue-500' },
   REQUIREMENT: { label: 'Requirement', className: 'bg-cyan-50 text-cyan-700 border border-cyan-200', dot: 'bg-cyan-500' },
-  PROPOSAL: { label: 'Proposal', className: 'bg-amber-50 text-amber-700 border border-amber-200', dot: 'bg-amber-500' },
-  NEGOTIATION: { label: 'Negotiation', className: 'bg-orange-50 text-orange-700 border border-orange-200', dot: 'bg-orange-500' },
-  WON: { label: 'Won', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200', dot: 'bg-emerald-500' },
-  LOST: { label: 'Lost', className: 'bg-red-50 text-red-700 border border-red-200', dot: 'bg-red-500' },
+  PROPOSAL: { label: 'Proposal', className: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800', dot: 'bg-amber-500' },
+  NEGOTIATION: { label: 'Negotiation', className: 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800', dot: 'bg-orange-500' },
+  WON: { label: 'Won', className: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800', dot: 'bg-emerald-500' },
+  LOST: { label: 'Lost', className: 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800', dot: 'bg-red-500' },
 }
 
 const AVATAR_COLORS = [
@@ -121,7 +121,7 @@ const fmtDate = (d: string | null) => {
 }
 
 function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-[#f5f5f7] rounded-xl ${className ?? ''}`} />
+  return <div className={`animate-pulse bg-canvas rounded-xl ${className ?? ''}`} />
 }
 
 function StatusBadge({ status }: { status: CompanyStatus }) {
@@ -146,9 +146,9 @@ function StageBadge({ stage }: { stage: DealStage }) {
 
 function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-3 border-b border-[#f5f5f7] last:border-0">
-      <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest pt-0.5">{label}</p>
-      <div className="text-sm text-[#1a1a1a] text-right">{value || <span className="text-[#aeaeb2]">—</span>}</div>
+    <div className="flex items-start justify-between gap-4 py-3 border-b border-canvas last:border-0">
+      <p className="text-[11px] font-medium text-muted uppercase tracking-widest pt-0.5">{label}</p>
+      <div className="text-sm text-ink text-right">{value || <span className="text-subtle">—</span>}</div>
     </div>
   )
 }
@@ -156,11 +156,11 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
 function EmptyBlock({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-14">
-      <div className="w-14 h-14 bg-[#f5f5f7] rounded-2xl flex items-center justify-center mb-3 text-[#aeaeb2]">
+      <div className="w-14 h-14 bg-canvas rounded-2xl flex items-center justify-center mb-3 text-subtle">
         {icon}
       </div>
-      <p className="text-sm font-medium text-[#6e6e73]">{title}</p>
-      <p className="text-xs text-[#aeaeb2] mt-1">{description}</p>
+      <p className="text-sm font-medium text-muted">{title}</p>
+      <p className="text-xs text-subtle mt-1">{description}</p>
     </div>
   )
 }
@@ -179,11 +179,11 @@ function ContactsTable({ contacts }: { contacts: Contact[] }) {
   return (
     <table className="w-full">
       <thead>
-        <tr className="border-b border-[#e5e5ea] bg-[#f9f9fb]">
+        <tr className="border-b border-line bg-canvas">
           {['Name', 'Designation', 'Email', 'Phone'].map((heading) => (
             <th
               key={heading}
-                      className="px-5 py-3.5 text-left text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest"
+                      className="px-5 py-3.5 text-left text-[10px] font-semibold text-subtle uppercase tracking-widest"
             >
               {heading}
             </th>
@@ -197,21 +197,21 @@ function ContactsTable({ contacts }: { contacts: Contact[] }) {
           const colorIndex = name.charCodeAt(0) % AVATAR_COLORS.length
           const avatarColor = AVATAR_COLORS[colorIndex] ?? AVATAR_COLORS[0]
           return (
-            <tr key={contact.id} className="border-b border-[#f5f5f7] last:border-0 hover:bg-[#f9f9fb] transition-colors duration-100">
+            <tr key={contact.id} className="border-b border-canvas last:border-0 hover:bg-canvas transition-colors duration-100">
               <td className="px-5 py-3.5">
                 <div className="flex items-center gap-3">
                   <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${avatarColor} flex items-center justify-center shrink-0`}>
                     <span className="text-white text-xs font-semibold">{initials}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-[#1a1a1a]">{name}</p>
+                    <p className="text-sm font-medium text-ink">{name}</p>
                     {contact.linkedin_url ? (
                       <a
                         href={contact.linkedin_url}
                         target="_blank"
                         rel="noopener noreferrer"
                         title="LinkedIn profile"
-                        className="text-[#aeaeb2] hover:text-violet-600 transition-colors"
+                        className="text-subtle hover:text-brand-hover transition-colors"
                       >
                         <LinkedInIcon />
                       </a>
@@ -220,19 +220,19 @@ function ContactsTable({ contacts }: { contacts: Contact[] }) {
                 </div>
               </td>
               <td className="px-5 py-3.5">
-                <p className="text-sm text-[#3a3a3c]">{contact.designation || '—'}</p>
+                <p className="text-sm text-ink">{contact.designation || '—'}</p>
               </td>
               <td className="px-5 py-3.5">
                 {contact.email ? (
-                  <a href={`mailto:${contact.email}`} className="text-sm text-[#3a3a3c] hover:text-violet-600">
+                  <a href={`mailto:${contact.email}`} className="text-sm text-ink hover:text-brand-hover">
                     {contact.email}
                   </a>
                 ) : (
-                  <p className="text-sm text-[#aeaeb2]">—</p>
+                  <p className="text-sm text-subtle">—</p>
                 )}
               </td>
               <td className="px-5 py-3.5">
-                <p className="text-sm text-[#3a3a3c]">{contact.phone || '—'}</p>
+                <p className="text-sm text-ink">{contact.phone || '—'}</p>
               </td>
             </tr>
           )
@@ -256,11 +256,11 @@ function DealsTable({ deals }: { deals: Deal[] }) {
   return (
     <table className="w-full">
       <thead>
-        <tr className="border-b border-[#e5e5ea] bg-[#f9f9fb]">
+        <tr className="border-b border-line bg-canvas">
           {['Deal', 'Stage', 'Value', 'Close date', 'Owner'].map((heading) => (
             <th
               key={heading}
-                      className="px-5 py-3.5 text-left text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest"
+                      className="px-5 py-3.5 text-left text-[10px] font-semibold text-subtle uppercase tracking-widest"
             >
               {heading}
             </th>
@@ -269,27 +269,27 @@ function DealsTable({ deals }: { deals: Deal[] }) {
       </thead>
       <tbody>
         {deals.map((deal) => (
-          <tr key={deal.id} className="border-b border-[#f5f5f7] last:border-0 hover:bg-[#f9f9fb] transition-colors duration-100">
+          <tr key={deal.id} className="border-b border-canvas last:border-0 hover:bg-canvas transition-colors duration-100">
             <td className="px-5 py-3.5">
-              <p className="text-sm font-medium text-[#1a1a1a]">{deal.name}</p>
+              <p className="text-sm font-medium text-ink">{deal.name}</p>
               {deal.service_pillar ? (
-                <p className="text-xs text-[#aeaeb2] mt-0.5">{deal.service_pillar}{deal.sub_category ? ` · ${deal.sub_category}` : ''}</p>
+                <p className="text-xs text-subtle mt-0.5">{deal.service_pillar}{deal.sub_category ? ` · ${deal.sub_category}` : ''}</p>
               ) : null}
             </td>
             <td className="px-5 py-3.5">
               <StageBadge stage={deal.stage} />
             </td>
             <td className="px-5 py-3.5">
-              <p className="text-sm font-semibold text-[#1a1a1a]">{fmtCurrency(Number(deal.value), deal.currency || 'INR')}</p>
-              <p className="text-xs text-[#aeaeb2] mt-0.5">
+              <p className="text-sm font-semibold text-ink">{fmtCurrency(Number(deal.value), deal.currency || 'INR')}</p>
+              <p className="text-xs text-subtle mt-0.5">
                 {fmtCurrency(Number(deal.weighted_value), deal.currency || 'INR')} weighted
               </p>
             </td>
             <td className="px-5 py-3.5">
-              <p className="text-sm text-[#3a3a3c]">{fmtDate(deal.expected_close_date)}</p>
+              <p className="text-sm text-ink">{fmtDate(deal.expected_close_date)}</p>
             </td>
             <td className="px-5 py-3.5">
-              <p className="text-sm text-[#3a3a3c]">{deal.owner_name ?? '—'}</p>
+              <p className="text-sm text-ink">{deal.owner_name ?? '—'}</p>
             </td>
           </tr>
         ))}
@@ -331,7 +331,7 @@ export default function CompanyDetail() {
 
   if (isLoading) {
     return (
-      <div className="p-6 max-w-screen-xl mx-auto space-y-5">
+      <div className="p-4 sm:p-6 max-w-screen-xl mx-auto space-y-5">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-56 w-full" />
@@ -342,19 +342,19 @@ export default function CompanyDetail() {
 
   if (isError || !company) {
     return (
-      <div className="p-6 max-w-screen-xl mx-auto">
-        <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl py-20 flex flex-col items-center">
-          <div className="w-16 h-16 rounded-2xl bg-[#f5f5f7] border border-[#e5e5ea] flex items-center justify-center mb-4 text-[#aeaeb2]">
+      <div className="p-4 sm:p-6 max-w-screen-xl mx-auto">
+        <div className="bg-surface border border-line shadow-sm rounded-2xl py-20 flex flex-col items-center">
+          <div className="w-16 h-16 rounded-2xl bg-canvas border border-line flex items-center justify-center mb-4 text-subtle">
             <BuildingIcon />
           </div>
-          <p className="text-sm font-medium text-[#6e6e73]">Company not found</p>
-          <p className="text-xs text-[#aeaeb2] mt-1">
+          <p className="text-sm font-medium text-muted">Company not found</p>
+          <p className="text-xs text-subtle mt-1">
             {getErrorMessage(error, 'This company does not exist or you cannot view it.')}
           </p>
           <button
             type="button"
             onClick={() => navigate('/business')}
-            className="mt-4 text-sm text-violet-600 hover:text-violet-700"
+            className="mt-4 text-sm text-brand hover:text-brand-hover"
           >
             Back to Business
           </button>
@@ -364,23 +364,23 @@ export default function CompanyDetail() {
   }
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
-      <Link to="/business" className="text-xs text-[#aeaeb2] hover:text-violet-600">
+    <div className="p-4 sm:p-6 max-w-screen-xl mx-auto space-y-6">
+      <Link to="/business" className="text-xs text-subtle hover:text-brand-hover">
         ← Business
       </Link>
 
-      <div className="bg-gradient-to-r from-[#f9f9fb] to-white border border-[#e5e5ea] rounded-2xl p-6 shadow-sm">
+      <div className="bg-gradient-to-r from-canvas to-white border border-line rounded-2xl p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${avatarColor} flex items-center justify-center shrink-0`}>
               <span className="text-white text-sm font-semibold">{initials}</span>
             </div>
             <div>
-              <h2 className="text-2xl font-semibold text-[#1a1a1a]">{company.name}</h2>
+              <h2 className="text-2xl font-semibold text-ink">{company.name}</h2>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <StatusBadge status={company.status} />
-                {company.industry ? <span className="text-xs text-[#6e6e73]">{company.industry}</span> : null}
-                {company.company_type ? <span className="text-xs text-[#aeaeb2]">{company.company_type}</span> : null}
+                {company.industry ? <span className="text-xs text-muted">{company.industry}</span> : null}
+                {company.company_type ? <span className="text-xs text-subtle">{company.company_type}</span> : null}
               </div>
             </div>
           </div>
@@ -389,7 +389,7 @@ export default function CompanyDetail() {
               <button
                 type="button"
                 onClick={() => setShowDeal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-surface border border-[#e5e5ea] hover:border-[#d1d1d6] text-[#6e6e73] hover:text-[#1a1a1a] text-sm font-medium rounded-xl active:scale-95 transition-transform"
+                className="flex items-center gap-2 px-4 py-2 bg-surface border border-line hover:border-subtle text-muted hover:text-ink text-sm font-medium rounded-xl active:scale-95 transition-transform"
               >
                 <PlusIcon />
                 Add Deal
@@ -406,23 +406,23 @@ export default function CompanyDetail() {
           ) : null}
         </div>
         <div className="grid grid-cols-3 gap-4 mt-6">
-          <div className="bg-surface border border-[#e5e5ea] rounded-xl p-4">
-            <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Contacts</p>
-            <p className="text-lg font-semibold text-[#1a1a1a] mt-1">{contacts.length}</p>
+          <div className="bg-surface border border-line rounded-xl p-4">
+            <p className="text-xs font-medium text-muted uppercase tracking-wider">Contacts</p>
+            <p className="text-lg font-semibold text-ink mt-1">{contacts.length}</p>
           </div>
-          <div className="bg-surface border border-[#e5e5ea] rounded-xl p-4">
-            <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Deals</p>
-            <p className="text-lg font-semibold text-[#1a1a1a] mt-1">{dealsData?.count ?? deals.length}</p>
+          <div className="bg-surface border border-line rounded-xl p-4">
+            <p className="text-xs font-medium text-muted uppercase tracking-wider">Deals</p>
+            <p className="text-lg font-semibold text-ink mt-1">{dealsData?.count ?? deals.length}</p>
           </div>
-          <div className="bg-surface border border-[#e5e5ea] rounded-xl p-4">
-            <p className="text-xs font-medium text-[#6e6e73] uppercase tracking-wider">Total deal value</p>
-            <p className="text-lg font-semibold text-[#1a1a1a] mt-1">{fmtCurrency(totalDealValue)}</p>
+          <div className="bg-surface border border-line rounded-xl p-4">
+            <p className="text-xs font-medium text-muted uppercase tracking-wider">Total deal value</p>
+            <p className="text-lg font-semibold text-ink mt-1">{fmtCurrency(totalDealValue)}</p>
           </div>
         </div>
       </div>
 
-      <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
-        <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest mb-2">Company</p>
+      <div className="bg-surface border border-line shadow-sm rounded-2xl p-5">
+        <p className="text-[11px] font-medium text-muted uppercase tracking-widest mb-2">Company</p>
         <InfoRow label="Location" value={company.location} />
         <InfoRow
           label="Website"
@@ -432,7 +432,7 @@ export default function CompanyDetail() {
                 href={websiteHref(company.website)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-violet-600 hover:text-violet-700"
+                className="text-brand hover:text-brand-hover"
               >
                 {websiteLabel(company.website)}
               </a>
@@ -443,18 +443,18 @@ export default function CompanyDetail() {
         <InfoRow label="Notes" value={company.notes} />
       </div>
 
-      <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-[#e5e5ea] flex items-center justify-between">
-          <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">
+      <div className="bg-surface border border-line shadow-sm rounded-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
+          <p className="text-[11px] font-medium text-muted uppercase tracking-widest">
             Contacts · {contacts.length}
           </p>
         </div>
         <ContactsTable contacts={contacts} />
       </div>
 
-      <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-[#e5e5ea]">
-          <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">
+      <div className="bg-surface border border-line shadow-sm rounded-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-line">
+          <p className="text-[11px] font-medium text-muted uppercase tracking-widest">
             Linked deals · {dealsData?.count ?? deals.length}
           </p>
         </div>

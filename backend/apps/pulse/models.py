@@ -122,6 +122,8 @@ class Opportunity(models.Model):
 
 class OpportunityActivityAction(models.TextChoices):
     STAGE_CHANGE = 'STAGE_CHANGE', 'Stage Change'
+    FOLLOW_UP_CHANGE = 'FOLLOW_UP_CHANGE', 'Follow-up Change'
+    DOCUMENT_UPDATE = 'DOCUMENT_UPDATE', 'Documents Updated'
     NOTE = 'NOTE', 'Note'
     FIELD_UPDATE = 'FIELD_UPDATE', 'Field Update'
 

@@ -127,6 +127,7 @@ class PoWorkflow(models.Model):
     total_value = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     value_per_invoice = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     billing_cycle = models.CharField(max_length=80)
+    milestone_details = models.CharField(max_length=255, blank=True)
     billing_due = models.CharField(max_length=120)
     finance_approved_at = models.DateTimeField(null=True, blank=True)
     finance_approved_by = models.ForeignKey(
@@ -163,3 +164,63 @@ class PoWorkflow(models.Model):
     @property
     def finance_approved(self) -> bool:
         return self.finance_approved_at is not None
+
+
+class PoDocumentIssueStatus(models.TextChoices):
+    OPEN = 'OPEN', 'Open'
+    RESOLVED = 'RESOLVED', 'Resolved'
+
+
+class PoDocumentIssue(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    opportunity = models.ForeignKey(
+        'pulse.Opportunity',
+        on_delete=models.CASCADE,
+        related_name='po_document_issues',
+    )
+    raised_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='raised_po_document_issues',
+    )
+    reasons = models.JSONField(default=list)
+    attachments = models.ManyToManyField(
+        'pulse.OpportunityActivityAttachment',
+        blank=True,
+        related_name='po_document_issues',
+    )
+    note = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=10,
+        choices=PoDocumentIssueStatus.choices,
+        default=PoDocumentIssueStatus.OPEN,
+        db_index=True,
+    )
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='resolved_po_document_issues',
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolution_note = models.TextField(blank=True)
+    resolution_activity = models.ForeignKey(
+        'pulse.OpportunityActivity',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='resolved_po_document_issues',
+    )
+    email_sent_at = models.DateTimeField(null=True, blank=True)
+    resolved_email_sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'po_document_issues'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'PO issue {self.opportunity_id} ({self.status})'

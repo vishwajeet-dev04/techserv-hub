@@ -55,10 +55,10 @@ function MonthGrid({
 
   return (
     <div className="min-w-0">
-      <p className="text-sm font-semibold text-[#3F4491] text-center mb-2">{formatMonthTitle(year, month)}</p>
+      <p className="text-sm font-semibold text-brand text-center mb-2">{formatMonthTitle(year, month)}</p>
       <div className="grid grid-cols-7 gap-0.5 mb-1">
         {WEEKDAYS.map((d) => (
-          <span key={d} className="text-[10px] font-semibold text-[#3F4491]/80 text-center py-1">
+          <span key={d} className="text-[10px] font-semibold text-brand/80 text-center py-1">
             {d}
           </span>
         ))}
@@ -81,10 +81,10 @@ function MonthGrid({
               onClick={() => onPick(iso)}
               className={`h-8 text-xs rounded-lg tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                 isEdge
-                  ? 'bg-[#3F4491] text-white font-semibold'
+                  ? 'bg-brand text-white font-semibold'
                   : inRange
-                    ? 'bg-[#E8F2FF] text-[#3F4491] font-medium'
-                    : 'text-ink hover:bg-violet-50'
+                    ? 'bg-brand-soft text-brand font-medium'
+                    : 'text-ink hover:bg-brand-soft/60'
               } ${pickingStart && !draftFrom ? 'ring-1 ring-brand/30' : ''}`}
             >
               {Number(iso.slice(8))}
@@ -264,8 +264,13 @@ export default function UniversalCalendar({
     ? createPortal(
         <div
           ref={panelRef}
-          className="fixed z-[80] max-h-[min(90vh,40rem)] overflow-y-auto rounded-2xl border border-line bg-surface shadow-[0_20px_50px_-24px_rgba(63,68,145,0.45)]"
-          style={{ top: panelPos.top, left: panelPos.left, width: panelPos.width }}
+          className="fixed z-[80] overflow-y-auto rounded-2xl border border-line bg-surface shadow-[0_20px_50px_-24px_rgba(63,68,145,0.45)]"
+          style={{
+            top: panelPos.top,
+            left: panelPos.left,
+            width: panelPos.width,
+            maxHeight: `min(40rem, calc(100dvh - ${panelPos.top + 12}px))`,
+          }}
         >
           <div className="flex flex-col md:flex-row">
             <div className="flex-1 min-w-0 p-4 border-b md:border-b-0 md:border-r border-line">
@@ -274,16 +279,16 @@ export default function UniversalCalendar({
                   type="button"
                   aria-label="Previous months"
                   onClick={() => shiftMonths(-1)}
-                  className="p-1.5 rounded-lg text-[#3F4491] hover:bg-[#E8F2FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  className="p-1.5 rounded-lg text-brand hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   <ChevronLeft className="w-4 h-4" strokeWidth={2.25} />
                 </button>
-                <p className="text-sm font-semibold text-[#3F4491] tabular-nums text-center">{headerLabel}</p>
+                <p className="text-sm font-semibold text-brand tabular-nums text-center">{headerLabel}</p>
                 <button
                   type="button"
                   aria-label="Next months"
                   onClick={() => shiftMonths(1)}
-                  className="p-1.5 rounded-lg text-[#3F4491] hover:bg-[#E8F2FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  className="p-1.5 rounded-lg text-brand hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
                 >
                   <ChevronRight className="w-4 h-4" strokeWidth={2.25} />
                 </button>
@@ -308,7 +313,7 @@ export default function UniversalCalendar({
               </div>
             </div>
 
-            <div className="md:w-44 shrink-0 p-2 md:p-3 bg-[#fafbfd] max-h-64 md:max-h-none overflow-x-auto md:overflow-y-auto">
+            <div className="md:w-44 shrink-0 p-2 md:p-3 bg-canvas max-h-64 md:max-h-none overflow-x-auto md:overflow-y-auto">
               <div className="flex md:flex-col gap-1 min-w-max md:min-w-0">
                 {PRESET_OPTIONS.map((opt) => (
                   <button
@@ -317,8 +322,8 @@ export default function UniversalCalendar({
                     onClick={() => applyPreset(opt.id)}
                     className={`text-left text-sm px-3 py-2 rounded-lg whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                       activePreset === opt.id
-                        ? 'bg-[#E8F2FF] text-[#3F4491] font-semibold'
-                        : 'text-[#3F4491] hover:bg-surface'
+                        ? 'bg-brand-soft text-brand font-semibold'
+                        : 'text-brand hover:bg-surface'
                     }`}
                   >
                     {opt.label}
@@ -329,8 +334,8 @@ export default function UniversalCalendar({
           </div>
 
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-line bg-surface">
-            <p className="text-xs font-medium text-[#3F4491]/80">Timezone: IST</p>
-            <button type="button" className={`${btnPrimaryClass} !bg-[#3F4491] hover:!bg-[#34397a]`} onClick={commit}>
+            <p className="text-xs font-medium text-brand/80">Timezone: IST</p>
+            <button type="button" className={`${btnPrimaryClass} !bg-brand hover:!bg-brand-hover`} onClick={commit}>
               Update
             </button>
           </div>
@@ -349,7 +354,7 @@ export default function UniversalCalendar({
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-label={label}
-          className={`inline-flex items-center gap-2 shrink-0 rounded-xl border border-violet-200 dark:border-violet-800 bg-gradient-to-br from-brand-soft/80 to-white dark:from-brand-soft dark:to-surface text-sm font-medium text-ink shadow-sm hover:border-violet-300 dark:hover:border-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+          className={`inline-flex items-center gap-2 shrink-0 rounded-xl border border-brand/25 bg-gradient-to-br from-brand-soft/80 to-surface text-sm font-medium text-ink shadow-sm hover:border-brand/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
             compact ? 'px-2.5 py-1.5' : 'rounded-2xl px-3 py-2.5'
           }`}
         >

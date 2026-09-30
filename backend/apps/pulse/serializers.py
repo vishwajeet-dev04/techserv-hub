@@ -49,6 +49,7 @@ class OpportunitySerializer(serializers.ModelSerializer):
     linked_po_count = serializers.SerializerMethodField()
     linked_po_value = serializers.SerializerMethodField()
     linked_pos = serializers.SerializerMethodField()
+    open_po_issue_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Opportunity
@@ -61,12 +62,12 @@ class OpportunitySerializer(serializers.ModelSerializer):
             'expected_amount', 'negotiated_amount', 'currency',
             'display_amount', 'is_high_value',
             'department', 'follow_up_date', 'expected_close_date',
-            'comments', 'linked_po_count', 'linked_po_value', 'linked_pos',
+            'comments', 'linked_po_count', 'linked_po_value', 'linked_pos', 'open_po_issue_count',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'prospect_number', 'company', 'owner', 'status',
-            'linked_po_count', 'linked_po_value', 'linked_pos',
+            'linked_po_count', 'linked_po_value', 'linked_pos', 'open_po_issue_count',
             'created_at', 'updated_at',
         ]
         extra_kwargs = {
@@ -89,6 +90,12 @@ class OpportunitySerializer(serializers.ModelSerializer):
 
     def get_display_amount(self, obj):
         return float(obj.display_amount)
+
+    def get_open_po_issue_count(self, obj):
+        annotated = getattr(obj, 'open_po_issue_count', None)
+        if annotated is not None:
+            return annotated
+        return obj.po_document_issues.filter(status='OPEN').count()
 
     def get_linked_po_count(self, obj):
         workflows = getattr(obj, '_prefetched_objects_cache', {}).get('po_workflows')

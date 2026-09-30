@@ -50,22 +50,22 @@ const FAMILY_META: Record<ActFamily, { label: string; dot: string; pill: string 
   tax: {
     label: 'Direct Tax',
     dot: 'bg-sky-500',
-    pill: 'bg-sky-50 text-sky-800 border-sky-100',
+    pill: 'bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 border-sky-100 dark:border-sky-800',
   },
   gst: {
     label: 'Indirect Tax (GST)',
     dot: 'bg-emerald-500',
-    pill: 'bg-emerald-50 text-emerald-800 border-emerald-100',
+    pill: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-100 dark:border-emerald-800',
   },
   labour: {
     label: 'Labour & Payroll',
     dot: 'bg-violet-500',
-    pill: 'bg-violet-50 text-violet-800 border-violet-100',
+    pill: 'bg-violet-50 dark:bg-violet-950/40 text-violet-800 dark:text-violet-300 border-violet-100 dark:border-violet-800',
   },
   companies: {
     label: 'ROC & Corporate',
     dot: 'bg-amber-500',
-    pill: 'bg-amber-50 text-amber-900 border-amber-100',
+    pill: 'bg-amber-50 dark:bg-amber-950/40 text-amber-900 border-amber-100 dark:border-amber-800',
   },
   other: {
     label: 'Other',
@@ -183,7 +183,7 @@ function EventPill({
       }}
       title={`${item.title} · ${item.form_name || item.applicable_act}`}
       className={`flex w-full items-center gap-1 truncate rounded-md border px-1 py-0.5 text-[10px] leading-tight font-medium text-left ${
-        done ? 'bg-slate-100 text-slate-500 border-slate-200 line-through opacity-70' : FAMILY_META[family].pill
+        done ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-800 line-through opacity-70' : FAMILY_META[family].pill
       }`}
     >
       <span
@@ -678,9 +678,9 @@ export default function FinanceCompliance() {
                         <span
                           className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border shrink-0 ${
                             item.status === 'PENDING'
-                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
                               : item.status === 'COMPLETED'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
                                 : 'bg-canvas text-muted border-line'
                           }`}
                         >
@@ -781,9 +781,9 @@ export default function FinanceCompliance() {
                           <span
                             className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full border ${
                               item.status === 'PENDING'
-                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
                                 : item.status === 'COMPLETED'
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
                                   : 'bg-canvas text-muted border-line'
                             }`}
                           >

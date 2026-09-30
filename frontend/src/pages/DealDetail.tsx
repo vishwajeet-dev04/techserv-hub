@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { dealsApi } from '../api/deals'
 import { getErrorMessage } from '../api/errors'
 import { notify } from '../lib/notify'
+import { useOpsPaths } from '../lib/opsPaths'
 import { useAuth } from '../hooks/useAuth'
 import type { DealActivity, DealActivityType, DealStage } from '../types'
 import ActivityFormModal from '../components/ActivityFormModal'
@@ -28,24 +29,24 @@ const ChevronIcon = () => (
 )
 
 const stageConfig: Record<DealStage, { label: string; className: string; dot: string }> = {
-  LEAD: { label: 'Lead', className: 'bg-slate-100 text-slate-600 border border-slate-200', dot: 'bg-slate-500' },
-  QUALIFIED: { label: 'Qualified', className: 'bg-blue-50 text-blue-700 border border-blue-200', dot: 'bg-blue-500' },
+  LEAD: { label: 'Lead', className: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800', dot: 'bg-slate-500' },
+  QUALIFIED: { label: 'Qualified', className: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800', dot: 'bg-blue-500' },
   REQUIREMENT: { label: 'Requirement', className: 'bg-cyan-50 text-cyan-700 border border-cyan-200', dot: 'bg-cyan-500' },
-  PROPOSAL: { label: 'Proposal', className: 'bg-amber-50 text-amber-700 border border-amber-200', dot: 'bg-amber-500' },
-  NEGOTIATION: { label: 'Negotiation', className: 'bg-orange-50 text-orange-700 border border-orange-200', dot: 'bg-orange-500' },
-  WON: { label: 'Won', className: 'bg-emerald-50 text-emerald-700 border border-emerald-200', dot: 'bg-emerald-500' },
-  LOST: { label: 'Lost', className: 'bg-red-50 text-red-700 border border-red-200', dot: 'bg-red-500' },
+  PROPOSAL: { label: 'Proposal', className: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800', dot: 'bg-amber-500' },
+  NEGOTIATION: { label: 'Negotiation', className: 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800', dot: 'bg-orange-500' },
+  WON: { label: 'Won', className: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800', dot: 'bg-emerald-500' },
+  LOST: { label: 'Lost', className: 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800', dot: 'bg-red-500' },
 }
 
 const STAGES: DealStage[] = ['LEAD', 'QUALIFIED', 'REQUIREMENT', 'PROPOSAL', 'NEGOTIATION', 'WON', 'LOST']
 
 const activityBadges: Record<DealActivityType, string> = {
-  NOTE: 'bg-slate-100 text-slate-600',
-  CALL: 'bg-blue-50 text-blue-700',
-  MEETING: 'bg-violet-50 text-violet-700',
+  NOTE: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300',
+  CALL: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300',
+  MEETING: 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300',
   EMAIL: 'bg-cyan-50 text-cyan-700',
-  PROPOSAL: 'bg-amber-50 text-amber-700',
-  FOLLOW_UP: 'bg-emerald-50 text-emerald-700',
+  PROPOSAL: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
+  FOLLOW_UP: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300',
 }
 
 const activityIcons: Record<DealActivityType, ReactNode> = {
@@ -106,7 +107,7 @@ const activityLabels: Record<DealActivityType, string> = {
 }
 
 function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-[#f5f5f7] rounded-xl ${className ?? ''}`} />
+  return <div className={`animate-pulse bg-canvas rounded-xl ${className ?? ''}`} />
 }
 
 function StageBadge({ stage }: { stage: DealStage }) {
@@ -146,10 +147,10 @@ const fmtDate = (d: string | null) => {
 
 function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-3 border-b border-[#f5f5f7] last:border-0">
-      <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest pt-0.5">{label}</p>
-      <div className="text-sm text-[#1a1a1a] text-right max-w-[70%]">
-        {value || <span className="text-[#aeaeb2]">—</span>}
+    <div className="flex items-start justify-between gap-4 py-3 border-b border-canvas last:border-0">
+      <p className="text-[11px] font-medium text-muted uppercase tracking-widest pt-0.5">{label}</p>
+      <div className="text-sm text-ink text-right max-w-[70%]">
+        {value || <span className="text-subtle">—</span>}
       </div>
     </div>
   )
@@ -182,13 +183,13 @@ function StageMenu({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((prev) => !prev)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[#6e6e73] bg-surface border border-[#e5e5ea] hover:text-[#1a1a1a] hover:border-[#d1d1d6] disabled:opacity-50 active:scale-95 transition-transform"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-muted bg-surface border border-line hover:text-ink hover:border-subtle disabled:opacity-50 active:scale-95 transition-transform"
       >
         Edit stage
         <ChevronIcon />
       </button>
       {open ? (
-        <div className="absolute right-0 mt-2 w-44 bg-surface border border-[#e5e5ea] rounded-xl shadow-sm z-10 py-1">
+        <div className="absolute right-0 mt-2 w-44 bg-surface border border-line rounded-xl shadow-sm z-10 py-1">
           {STAGES.map((stage) => (
             <button
               key={stage}
@@ -197,8 +198,8 @@ function StageMenu({
                 setOpen(false)
                 if (stage !== current) onSelect(stage)
               }}
-              className={`w-full text-left px-3 py-2 text-xs hover:bg-[#f5f5f7] ${
-                stage === current ? 'text-violet-600 font-medium' : 'text-[#1a1a1a]'
+              className={`w-full text-left px-3 py-2 text-xs hover:bg-canvas ${
+                stage === current ? 'text-brand font-medium' : 'text-ink'
               }`}
             >
               {stageConfig[stage].label}
@@ -214,36 +215,36 @@ function ActivityTimeline({ activities }: { activities: DealActivity[] }) {
   if (activities.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-14">
-        <div className="w-14 h-14 rounded-2xl bg-[#f5f5f7] border border-[#e5e5ea] flex items-center justify-center mb-3 text-[#aeaeb2]">
+        <div className="w-14 h-14 rounded-2xl bg-canvas border border-line flex items-center justify-center mb-3 text-subtle">
           <TrendingIcon />
         </div>
-        <p className="text-sm font-medium text-[#6e6e73]">No activities yet</p>
-        <p className="text-xs text-[#aeaeb2] mt-1">Log a note, call, or meeting to start the timeline</p>
+        <p className="text-sm font-medium text-muted">No activities yet</p>
+        <p className="text-xs text-subtle mt-1">Log a note, call, or meeting to start the timeline</p>
       </div>
     )
   }
 
   return (
     <div className="relative px-5 py-5">
-      <div className="absolute left-8.5 top-5 bottom-5 w-px bg-[#e5e5ea]" style={{ left: '2.125rem' }} />
+      <div className="absolute left-8.5 top-5 bottom-5 w-px bg-line" style={{ left: '2.125rem' }} />
       <div className="space-y-4">
         {activities.map((activity) => (
           <div key={activity.id} className="relative pl-12">
             <div className={`absolute left-0 top-1 w-7 h-7 rounded-lg flex items-center justify-center ${activityDot[activity.type]}`}>
               {activityIcons[activity.type]}
             </div>
-            <div className="bg-surface border border-[#e5e5ea] rounded-xl p-4 shadow-sm">
+            <div className="bg-surface border border-line rounded-xl p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1 min-w-0">
                   <ActivityTypeBadge type={activity.type} />
-                  <p className="text-sm font-medium text-[#1a1a1a]">{activity.subject}</p>
+                  <p className="text-sm font-medium text-ink">{activity.subject}</p>
                   {activity.description ? (
-                    <p className="text-sm text-[#3a3a3c]">{activity.description}</p>
+                    <p className="text-sm text-ink">{activity.description}</p>
                   ) : null}
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="text-xs text-[#6e6e73]">{fmtDate(activity.activity_date)}</p>
-                  <p className="text-xs text-[#aeaeb2] mt-0.5">{activity.created_by_name ?? '—'}</p>
+                  <p className="text-xs text-muted">{fmtDate(activity.activity_date)}</p>
+                  <p className="text-xs text-subtle mt-0.5">{activity.created_by_name ?? '—'}</p>
                 </div>
               </div>
             </div>
@@ -257,6 +258,7 @@ function ActivityTimeline({ activities }: { activities: DealActivity[] }) {
 export default function DealDetail() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
+  const opsPaths = useOpsPaths()
   const queryClient = useQueryClient()
   const { isManagement } = useAuth()
   const [showActivity, setShowActivity] = useState(false)
@@ -298,7 +300,7 @@ export default function DealDetail() {
 
   if (isLoading) {
     return (
-      <div className="p-6 max-w-screen-xl mx-auto space-y-5">
+      <div className="p-4 sm:p-6 max-w-screen-xl mx-auto space-y-5">
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-56 w-full" />
@@ -309,19 +311,19 @@ export default function DealDetail() {
 
   if (isError || !deal) {
     return (
-      <div className="p-6 max-w-screen-xl mx-auto">
-        <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl py-20 flex flex-col items-center">
-          <div className="w-16 h-16 rounded-2xl bg-[#f5f5f7] border border-[#e5e5ea] flex items-center justify-center mb-4 text-[#aeaeb2]">
+      <div className="p-4 sm:p-6 max-w-screen-xl mx-auto">
+        <div className="bg-surface border border-line shadow-sm rounded-2xl py-20 flex flex-col items-center">
+          <div className="w-16 h-16 rounded-2xl bg-canvas border border-line flex items-center justify-center mb-4 text-subtle">
             <TrendingIcon />
           </div>
-          <p className="text-sm font-medium text-[#6e6e73]">Deal not found</p>
-          <p className="text-xs text-[#aeaeb2] mt-1">
+          <p className="text-sm font-medium text-muted">Deal not found</p>
+          <p className="text-xs text-subtle mt-1">
             {getErrorMessage(error, 'This deal does not exist or you cannot view it.')}
           </p>
           <button
             type="button"
-            onClick={() => navigate('/deals')}
-            className="mt-4 text-sm text-violet-600 hover:text-violet-700"
+            onClick={() => navigate(opsPaths.deals)}
+            className="mt-4 text-sm text-brand hover:text-brand-hover"
           >
             Back to Deals
           </button>
@@ -331,16 +333,16 @@ export default function DealDetail() {
   }
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
-      <Link to="/deals" className="text-xs text-[#aeaeb2] hover:text-violet-600">
+    <div className="p-4 sm:p-6 max-w-screen-xl mx-auto space-y-6">
+      <Link to={opsPaths.deals} className="text-xs text-subtle hover:text-brand-hover">
         ← Deals
       </Link>
 
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold text-[#1a1a1a]">{deal.name}</h2>
+          <h2 className="text-2xl font-semibold text-ink">{deal.name}</h2>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-            <Link to={`/business/${deal.company}`} className="text-sm text-violet-600 hover:text-violet-700">
+            <Link to={`/business/${deal.company}`} className="text-sm text-brand hover:text-brand-hover">
               {deal.company_name}
             </Link>
             <StageBadge stage={deal.stage} />
@@ -366,13 +368,13 @@ export default function DealDetail() {
       </div>
 
       {stageError ? (
-        <div className="px-4 py-3 rounded-xl bg-red-50 border border-red-200">
-          <p className="text-sm text-red-600">{stageError}</p>
+        <div className="px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800">
+          <p className="text-sm text-danger">{stageError}</p>
         </div>
       ) : null}
 
-      <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
-        <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest mb-2">Deal</p>
+      <div className="bg-surface border border-line shadow-sm rounded-2xl p-5">
+        <p className="text-[11px] font-medium text-muted uppercase tracking-widest mb-2">Deal</p>
         <InfoRow label="Value" value={fmtCurrency(deal.value, deal.currency || 'INR')} />
         <InfoRow label="Weighted value" value={fmtCurrency(deal.weighted_value, deal.currency || 'INR')} />
         <InfoRow label="Probability" value={`${deal.probability}%`} />
@@ -386,9 +388,9 @@ export default function DealDetail() {
         <InfoRow label="Notes" value={deal.notes} />
       </div>
 
-      <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-[#e5e5ea] flex items-center justify-between">
-          <p className="text-[11px] font-medium text-[#6e6e73] uppercase tracking-widest">
+      <div className="bg-surface border border-line shadow-sm rounded-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-line flex items-center justify-between">
+          <p className="text-[11px] font-medium text-muted uppercase tracking-widest">
             Activity timeline · {activities.length}
           </p>
         </div>

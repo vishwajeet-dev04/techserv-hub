@@ -1,3 +1,4 @@
+import re
 import uuid as uuid_lib
 from pathlib import Path
 
@@ -8,9 +9,12 @@ from .models import (
     CapitalEntry,
     CashflowEntry,
     ComplianceItem,
+    FinanceClient,
+    FinanceVendor,
     Invoice,
     Payable,
     PurchaseOrder,
+    payable_due_date,
 )
 from .services.metric_service import update_manual_metric, validate_metric_value
 
@@ -225,16 +229,22 @@ class PayableSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'vendor', 'category', 'invoice_number', 'month_label',
             'taxable_amount', 'gst_amount', 'tds_amount', 'total_amount', 'payable_amount',
-            'due_date', 'status', 'notes', 'created_at', 'updated_at',
+            'invoice_date', 'due_date', 'status', 'notes', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs.get('invoice_date') and 'due_date' not in attrs:
+            attrs['due_date'] = payable_due_date(attrs['invoice_date'])
+        return attrs
 
 
 class CashflowEntrySerializer(serializers.ModelSerializer):
     class Meta:
         model = CashflowEntry
         fields = [
-            'id', 'entry_date', 'direction', 'bucket', 'category', 'sub_category',
+            'id', 'account', 'entry_date', 'direction', 'bucket', 'category', 'sub_category',
             'entity', 'voucher_no', 'amount', 'notes', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -368,3 +378,139 @@ class ComplianceItemSerializer(serializers.ModelSerializer):
                 ComplianceItem.objects.bulk_update(to_update, ['due_date'])
 
         return instance
+
+
+PAN_RE = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
+GSTIN_RE = re.compile(r'^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$')
+MOBILE_RE = re.compile(r'^(?:\+?91)?\d{10}$')
+IFSC_RE = re.compile(r'^[A-Z]{4}0[A-Z0-9]{6}$')
+
+
+class _MasterDataSerializer(serializers.ModelSerializer):
+    """Shared name/PAN/GSTIN/mobile rules for finance clients and vendors."""
+
+    stats_key = ''
+    entity_label = 'record'
+
+    def validate_name(self, value):
+        name = ' '.join((value or '').split())
+        if not name:
+            raise serializers.ValidationError('Name is required.')
+        qs = self.Meta.model.objects.filter(name__iexact=name)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(f'A {self.entity_label} with this name already exists.')
+        return name
+
+    def validate_pan(self, value):
+        pan = (value or '').strip().upper()
+        if pan and not PAN_RE.match(pan):
+            raise serializers.ValidationError('PAN must look like ABCDE1234F.')
+        return pan
+
+    def validate_gstin(self, value):
+        gstin = (value or '').strip().upper()
+        if gstin and not GSTIN_RE.match(gstin):
+            raise serializers.ValidationError('GSTIN must be 15 characters, e.g. 29ABCDE1234F1Z5.')
+        return gstin
+
+    def validate_mobile(self, value):
+        mobile = re.sub(r'[\s\-()]', '', value or '')
+        if mobile and not MOBILE_RE.match(mobile):
+            raise serializers.ValidationError('Mobile must be 10 digits, optionally prefixed with +91.')
+        return mobile
+
+    def validate_msme_number(self, value):
+        return (value or '').strip().upper()
+
+    def validate(self, data):
+        gstin = data.get('gstin', getattr(self.instance, 'gstin', ''))
+        pan = data.get('pan', getattr(self.instance, 'pan', ''))
+        if gstin and not pan:
+            data['pan'] = gstin[2:12]
+        return data
+
+    def _stats(self, obj) -> dict:
+        return (self.context.get(self.stats_key) or {}).get(obj.pk, {})
+
+
+class FinanceClientSerializer(_MasterDataSerializer):
+    stats_key = 'client_stats'
+    entity_label = 'client'
+    company_name = serializers.CharField(source='company.name', read_only=True, default='')
+    active_pos = serializers.SerializerMethodField()
+    total_invoiced = serializers.SerializerMethodField()
+    total_paid = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FinanceClient
+        fields = [
+            'id', 'name', 'service_line', 'contact_person', 'email', 'mobile',
+            'pan', 'gstin', 'msme_registered', 'msme_number',
+            'billing_address', 'city', 'state', 'payment_terms_days',
+            'is_active', 'notes', 'company', 'company_name',
+            'active_pos', 'total_invoiced', 'total_paid',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'company_name', 'active_pos', 'total_invoiced', 'total_paid',
+            'created_at', 'updated_at',
+        ]
+
+    def get_active_pos(self, obj):
+        return self._stats(obj).get('active_pos', 0)
+
+    def get_total_invoiced(self, obj):
+        return self._stats(obj).get('total_invoiced', 0.0)
+
+    def get_total_paid(self, obj):
+        return self._stats(obj).get('total_paid', 0.0)
+
+
+class FinanceVendorSerializer(_MasterDataSerializer):
+    stats_key = 'vendor_stats'
+    entity_label = 'vendor'
+    total_payable = serializers.SerializerMethodField()
+    outstanding = serializers.SerializerMethodField()
+
+    class Meta:
+        model = FinanceVendor
+        fields = [
+            'id', 'name', 'category', 'contact_person', 'email', 'mobile',
+            'pan', 'gstin', 'msme_registered', 'msme_number',
+            'tds_applicable', 'tds_section', 'tds_rate',
+            'address', 'city', 'state',
+            'bank_account_name', 'bank_account_number', 'ifsc',
+            'is_active', 'notes', 'total_payable', 'outstanding',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'total_payable', 'outstanding', 'created_at', 'updated_at']
+
+    def validate_tds_section(self, value):
+        return (value or '').strip().upper()
+
+    def validate_tds_rate(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError('TDS rate must be between 0 and 100.')
+        return value
+
+    def validate_ifsc(self, value):
+        ifsc = (value or '').strip().upper()
+        if ifsc and not IFSC_RE.match(ifsc):
+            raise serializers.ValidationError('IFSC must look like HDFC0001234.')
+        return ifsc
+
+    def validate(self, data):
+        data = super().validate(data)
+        applicable = data.get('tds_applicable', getattr(self.instance, 'tds_applicable', False))
+        section = data.get('tds_section', getattr(self.instance, 'tds_section', ''))
+        if applicable and not section:
+            raise serializers.ValidationError({'tds_section': 'TDS section is required when TDS is applicable.'})
+        return data
+
+    def get_total_payable(self, obj):
+        return self._stats(obj).get('total_payable', 0.0)
+
+    def get_outstanding(self, obj):
+        return self._stats(obj).get('outstanding', 0.0)

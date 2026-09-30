@@ -1,13 +1,20 @@
 import logging
+from django.db.models import Q
 from rest_framework import generics, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.pulse.views import _read_upload, _xlsx_response
 from .models import FinancialPeriod, FinancialDocument, FinancialMetric, MisUpload
-from .models import CapitalEntry, CashflowEntry, ComplianceItem, Invoice, Payable, PurchaseOrder
+from .models import CapitalEntry, CashflowAccount, CashflowEntry, ComplianceItem, Invoice, Payable, PurchaseOrder
+from .models import FinanceClient, FinanceVendor
+from . import master_excel
+from .services.master_data import client_stats, vendor_stats
 from .serializers import (
+    FinanceClientSerializer,
+    FinanceVendorSerializer,
     FinancialPeriodSerializer,
     FinancialDocumentSerializer,
     FinancialDocumentUploadSerializer,
@@ -139,6 +146,11 @@ def _apply_date_filters(qs, request, field: str):
     return qs
 
 
+def _cashflow_account(request) -> str:
+    account = (request.query_params.get('account') or CashflowAccount.CURRENT).upper()
+    return account if account in CashflowAccount.values else CashflowAccount.CURRENT
+
+
 class PurchaseOrderListCreateView(generics.ListCreateAPIView):
     serializer_class = PurchaseOrderSerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
@@ -198,7 +210,7 @@ class PayableListCreateView(generics.ListCreateAPIView):
         status_filter = self.request.query_params.get('status')
         search = self.request.query_params.get('search')
         vendor = self.request.query_params.get('vendor')
-        qs = _apply_date_filters(qs, self.request, 'due_date')
+        qs = _apply_date_filters(qs, self.request, 'invoice_date')
         if status_filter:
             qs = qs.filter(status=status_filter)
         if vendor:
@@ -219,7 +231,7 @@ class CashflowEntryListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
     def get_queryset(self):
-        qs = CashflowEntry.objects.all()
+        qs = CashflowEntry.objects.filter(account=_cashflow_account(self.request))
         direction = self.request.query_params.get('direction')
         search = self.request.query_params.get('search')
         category = self.request.query_params.get('category')
@@ -348,7 +360,7 @@ def ops_dashboard_series(request):
 def bank_position(request):
     date_from = request.query_params.get('from')
     date_to = request.query_params.get('to')
-    return Response(get_bank_position(date_from, date_to))
+    return Response(get_bank_position(date_from, date_to, account=_cashflow_account(request)))
 
 
 @api_view(['GET'])
@@ -358,7 +370,7 @@ def ledger_page_summary(request):
     date_from = request.query_params.get('from')
     date_to = request.query_params.get('to')
     if page == 'cashflow':
-        return Response(cashflow_summary(date_from, date_to))
+        return Response(cashflow_summary(date_from, date_to, account=_cashflow_account(request)))
     if page == 'payables':
         return Response(payables_summary(date_from, date_to))
     if page == 'invoices':
@@ -368,3 +380,135 @@ def ledger_page_summary(request):
     if page in {'purchase-orders', 'pos', 'po'}:
         return Response(purchase_orders_summary())
     return Response({'error': True, 'message': 'Unknown page.'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class _MasterDataStatsMixin:
+    stats_key = ''
+
+    def compute_stats(self, items):
+        raise NotImplementedError
+
+    def get_serializer(self, *args, **kwargs):
+        if args and args[0] is not None:
+            instance = args[0]
+            items = instance if isinstance(instance, (list, tuple)) or hasattr(instance, 'model') else [instance]
+            context = self.get_serializer_context()
+            context[self.stats_key] = self.compute_stats(items)
+            kwargs['context'] = context
+        return super().get_serializer(*args, **kwargs)
+
+
+def _master_queryset(model, request, search_fields):
+    qs = model.objects.all()
+    active = (request.query_params.get('active') or '').lower()
+    if active in {'true', '1', 'active'}:
+        qs = qs.filter(is_active=True)
+    elif active in {'false', '0', 'inactive'}:
+        qs = qs.filter(is_active=False)
+    search = (request.query_params.get('search') or '').strip()
+    if search:
+        query = Q()
+        for field in search_fields:
+            query |= Q(**{f'{field}__icontains': search})
+        qs = qs.filter(query)
+    return qs
+
+
+CLIENT_SEARCH_FIELDS = ('name', 'service_line', 'email', 'mobile', 'pan', 'gstin', 'contact_person', 'city')
+VENDOR_SEARCH_FIELDS = ('name', 'category', 'email', 'mobile', 'pan', 'gstin', 'contact_person', 'city')
+
+
+class _ClientStats(_MasterDataStatsMixin):
+    stats_key = 'client_stats'
+
+    def compute_stats(self, items):
+        return client_stats(items)
+
+
+class _VendorStats(_MasterDataStatsMixin):
+    stats_key = 'vendor_stats'
+
+    def compute_stats(self, items):
+        return vendor_stats(items)
+
+
+class FinanceClientListCreateView(_ClientStats, generics.ListCreateAPIView):
+    serializer_class = FinanceClientSerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+    def get_queryset(self):
+        return _master_queryset(FinanceClient, self.request, CLIENT_SEARCH_FIELDS).select_related('company')
+
+
+class FinanceClientDetailView(_ClientStats, generics.RetrieveUpdateDestroyAPIView):
+    queryset = FinanceClient.objects.select_related('company')
+    serializer_class = FinanceClientSerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+
+class FinanceVendorListCreateView(_VendorStats, generics.ListCreateAPIView):
+    serializer_class = FinanceVendorSerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+    def get_queryset(self):
+        return _master_queryset(FinanceVendor, self.request, VENDOR_SEARCH_FIELDS)
+
+
+class FinanceVendorDetailView(_VendorStats, generics.RetrieveUpdateDestroyAPIView):
+    queryset = FinanceVendor.objects.all()
+    serializer_class = FinanceVendorSerializer
+    permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsFinanceOperator])
+def clients_export(request):
+    return _xlsx_response(master_excel.export_clients_xlsx(), 'finance-clients.xlsx')
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsFinanceOperator])
+def clients_template(request):
+    return _xlsx_response(master_excel.client_template_xlsx(), 'finance-clients-template.xlsx')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsFinanceOperator])
+@parser_classes([MultiPartParser, FormParser])
+def clients_import(request):
+    content, error = _read_upload(request)
+    if error is not None:
+        return error
+    result = master_excel.import_clients_xlsx(content)
+    logger.info(
+        'Finance clients imported created=%s updated=%s errors=%s user=%s',
+        result['created'], result['updated'], len(result['errors']), request.user.id,
+    )
+    return Response(result)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsFinanceOperator])
+def vendors_export(request):
+    return _xlsx_response(master_excel.export_vendors_xlsx(), 'finance-vendors.xlsx')
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsFinanceOperator])
+def vendors_template(request):
+    return _xlsx_response(master_excel.vendor_template_xlsx(), 'finance-vendors-template.xlsx')
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsFinanceOperator])
+@parser_classes([MultiPartParser, FormParser])
+def vendors_import(request):
+    content, error = _read_upload(request)
+    if error is not None:
+        return error
+    result = master_excel.import_vendors_xlsx(content)
+    logger.info(
+        'Finance vendors imported created=%s updated=%s errors=%s user=%s',
+        result['created'], result['updated'], len(result['errors']), request.user.id,
+    )
+    return Response(result)

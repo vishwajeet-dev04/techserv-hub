@@ -1,4 +1,6 @@
 import uuid
+from datetime import timedelta
+
 from django.db import models
 from django.conf import settings
 
@@ -175,6 +177,13 @@ class PayableStatus(models.TextChoices):
     PAID = 'PAID', 'Paid'
 
 
+PAYABLE_TERMS_DAYS = 30
+
+
+def payable_due_date(invoice_date):
+    return invoice_date + timedelta(days=PAYABLE_TERMS_DAYS) if invoice_date else None
+
+
 class CashflowDirection(models.TextChoices):
     INFLOW = 'INFLOW', 'Inflow'
     OUTFLOW = 'OUTFLOW', 'Outflow'
@@ -184,6 +193,11 @@ class CashflowBucket(models.TextChoices):
     REVENUE = 'REVENUE', 'Revenue'
     CAPITAL = 'CAPITAL', 'Capital'
     OPERATING = 'OPERATING', 'Operating'
+
+
+class CashflowAccount(models.TextChoices):
+    CURRENT = 'CURRENT', 'Current / Operational'
+    SEED = 'SEED', 'Seed Account'
 
 
 class CapitalType(models.TextChoices):
@@ -291,6 +305,7 @@ class Payable(models.Model):
     tds_amount = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=15, decimal_places=2)
     payable_amount = models.DecimalField(max_digits=15, decimal_places=2)
+    invoice_date = models.DateField(null=True, blank=True, db_index=True)
     due_date = models.DateField(null=True, blank=True)
     status = models.CharField(
         max_length=20,
@@ -304,14 +319,57 @@ class Payable(models.Model):
 
     class Meta:
         db_table = 'payables'
-        ordering = ['-due_date', '-created_at']
+        ordering = ['-invoice_date', '-created_at']
 
     def __str__(self):
         return f'{self.vendor} {self.invoice_number}'.strip()
 
+    def save(self, *args, **kwargs):
+        if self.invoice_date and not self.due_date:
+            self.due_date = payable_due_date(self.invoice_date)
+        super().save(*args, **kwargs)
+
+
+class PayableReminderEmailLog(models.Model):
+    """Dedup log for automated payable due-date reminder emails."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    payable = models.ForeignKey(
+        Payable,
+        on_delete=models.CASCADE,
+        related_name='reminder_email_logs',
+    )
+    offset_days = models.PositiveSmallIntegerField()
+    due_date = models.DateField()
+    recipients = models.TextField(blank=True)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'payable_reminder_email_logs'
+        ordering = ['-sent_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['payable', 'offset_days', 'due_date'],
+                name='uniq_payable_reminder_email_log',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(offset_days__in=[1, 3]),
+                name='payable_reminder_email_offset_days_valid',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.offset_days}d {self.payable_id}'
+
 
 class CashflowEntry(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    account = models.CharField(
+        max_length=10,
+        choices=CashflowAccount.choices,
+        default=CashflowAccount.CURRENT,
+        db_index=True,
+    )
     entry_date = models.DateField(db_index=True)
     direction = models.CharField(max_length=10, choices=CashflowDirection.choices)
     bucket = models.CharField(
@@ -419,3 +477,71 @@ class ComplianceItem(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class FinanceClient(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, db_index=True)
+    company = models.ForeignKey(
+        'business.Company',
+        on_delete=models.SET_NULL,
+        related_name='finance_clients',
+        null=True,
+        blank=True,
+    )
+    service_line = models.CharField(max_length=150, blank=True)
+    contact_person = models.CharField(max_length=150, blank=True)
+    email = models.EmailField(blank=True)
+    mobile = models.CharField(max_length=20, blank=True)
+    pan = models.CharField(max_length=10, blank=True)
+    gstin = models.CharField(max_length=15, blank=True)
+    msme_registered = models.BooleanField(default=False)
+    msme_number = models.CharField(max_length=40, blank=True)
+    billing_address = models.TextField(blank=True)
+    city = models.CharField(max_length=120, blank=True)
+    state = models.CharField(max_length=120, blank=True)
+    payment_terms_days = models.PositiveIntegerField(null=True, blank=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_clients'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class FinanceVendor(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, db_index=True)
+    category = models.CharField(max_length=100, blank=True)
+    contact_person = models.CharField(max_length=150, blank=True)
+    email = models.EmailField(blank=True)
+    mobile = models.CharField(max_length=20, blank=True)
+    pan = models.CharField(max_length=10, blank=True)
+    gstin = models.CharField(max_length=15, blank=True)
+    msme_registered = models.BooleanField(default=False)
+    msme_number = models.CharField(max_length=40, blank=True)
+    tds_applicable = models.BooleanField(default=False)
+    tds_section = models.CharField(max_length=20, blank=True)
+    tds_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    address = models.TextField(blank=True)
+    city = models.CharField(max_length=120, blank=True)
+    state = models.CharField(max_length=120, blank=True)
+    bank_account_name = models.CharField(max_length=150, blank=True)
+    bank_account_number = models.CharField(max_length=40, blank=True)
+    ifsc = models.CharField(max_length=11, blank=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'finance_vendors'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name

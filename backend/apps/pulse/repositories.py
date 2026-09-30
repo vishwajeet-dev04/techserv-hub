@@ -1,6 +1,20 @@
 from __future__ import annotations
 
-from django.db.models import Case, Count, DecimalField, F, Q, QuerySet, Sum, When
+from django.db.models import (
+    Case,
+    Count,
+    DecimalField,
+    F,
+    IntegerField,
+    OuterRef,
+    Q,
+    QuerySet,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce
 
 from apps.business.models import Company
 from apps.pulse.models import Opportunity, PulseContact, Reminder
@@ -12,6 +26,19 @@ DISPLAY_AMOUNT = Case(
     default=F('expected_amount'),
     output_field=DecimalField(max_digits=15, decimal_places=2),
 )
+
+
+def _open_po_issue_count():
+    from apps.deals.models import PoDocumentIssue, PoDocumentIssueStatus
+
+    counts = (
+        PoDocumentIssue.objects.filter(opportunity=OuterRef('pk'), status=PoDocumentIssueStatus.OPEN)
+        .order_by()
+        .values('opportunity')
+        .annotate(total=Count('id'))
+        .values('total')
+    )
+    return Coalesce(Subquery(counts, output_field=IntegerField()), Value(0))
 
 
 STAGE_VALUE = Case(
@@ -87,6 +114,7 @@ class OpportunityRepository:
         qs = (
             Opportunity.objects.select_related('company', 'owner', 'contact', 'contact__company')
             .prefetch_related('po_workflows')
+            .annotate(open_po_issue_count=_open_po_issue_count())
         )
         if search:
             qs = qs.filter(
@@ -105,6 +133,7 @@ class OpportunityRepository:
         return (
             Opportunity.objects.select_related('company', 'owner', 'contact')
             .prefetch_related('po_workflows')
+            .annotate(open_po_issue_count=_open_po_issue_count())
             .get(pk=pk)
         )
 

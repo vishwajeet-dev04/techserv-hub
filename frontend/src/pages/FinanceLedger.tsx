@@ -1,22 +1,21 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMemo, useState, type ReactNode } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import {
   ArrowDownRight,
   ArrowUpRight,
-  BarChart3,
   CheckCircle2,
   Clock3,
   CreditCard,
-  MoreHorizontal,
   TrendingUp,
 } from 'lucide-react'
 import { financeApi } from '../api/finance'
 import type {
   CapitalRow,
+  CashflowAccount,
   CashflowRow,
+  LedgerCashflowCard,
   LedgerCashflowSummary,
-  LedgerClientsSummary,
   LedgerInvoicesSummary,
   LedgerPayablesSummary,
   LedgerPoSummary,
@@ -31,38 +30,53 @@ import {
   formatInr,
   useFinanceFilters,
 } from '../components/finance/FinancePageShell'
-import Modal, { btnSecondaryClass, labelClass } from '../components/Modal'
+import { PulsePaginationFooter } from '../components/pulse/PulseTableShell'
 
 const fmt = formatInr
 
-function TableWrap({ headers, children }: { headers: string[]; children: React.ReactNode }) {
+function TableWrap({
+  headers,
+  children,
+  footer,
+}: {
+  headers: string[]
+  children: React.ReactNode
+  footer?: React.ReactNode
+}) {
   return (
-    <div className="bg-surface/80 backdrop-blur-md border border-line rounded-2xl overflow-hidden shadow-sm">
-      <table className="w-full">
-        <thead>
-          <tr className="bg-canvas border-b border-line">
-            {headers.map((h) => (
-              <th key={h} className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-widest text-subtle">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
+    <div className="bg-surface/80 backdrop-blur-md border border-line rounded-2xl shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="table-pin-first w-full min-w-[760px]">
+          <thead>
+            <tr className="bg-canvas border-b border-line">
+              {headers.map((h) => (
+                <th key={h} className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-widest text-subtle">
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>{children}</tbody>
+        </table>
+      </div>
+      {footer ? (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-5 py-3 border-t border-line">
+          {footer}
+        </div>
+      ) : null}
     </div>
   )
 }
 
 function PageFrame({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
-    <div className="p-6 max-w-[1400px] mx-auto space-y-5">
+    <div className="p-4 sm:p-6 max-w-[1400px] mx-auto space-y-5">
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Financial Control</p>
-        <h2 className="text-2xl font-semibold text-ink mt-1">{title}</h2>
+        <h2 className="text-xl sm:text-2xl font-semibold text-ink mt-1">{title}</h2>
         <p className="text-xs text-muted mt-1">{subtitle}</p>
       </div>
-      <div className="bg-surface/80 backdrop-blur-md border border-line rounded-2xl overflow-hidden shadow-sm">{children}</div>
+      <div className="bg-surface/80 backdrop-blur-md border border-line rounded-2xl overflow-x-auto shadow-sm">{children}</div>
     </div>
   )
 }
@@ -98,20 +112,6 @@ function formatPctDelta(pct: number | null): string | null {
   const rounded = Math.round(pct * 10) / 10
   const sign = rounded > 0 ? '+' : ''
   return `${sign}${rounded}% vs last period`
-}
-
-function CashflowPromo() {
-  return (
-    <div className="hidden lg:flex items-center gap-3 rounded-2xl border border-violet-200/80 dark:border-violet-800 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 dark:from-violet-950/40 dark:via-surface dark:to-surface px-4 py-3 shadow-sm max-w-xs">
-      <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 flex items-center justify-center shrink-0">
-        <BarChart3 className="w-5 h-5" strokeWidth={2} aria-hidden />
-      </div>
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-ink leading-tight">Track. Analyze. Grow.</p>
-        <p className="text-xs text-muted mt-0.5 leading-snug">Live cash movement across inflows and outflows.</p>
-      </div>
-    </div>
-  )
 }
 
 function CashflowMetricCard({
@@ -167,56 +167,107 @@ function SideMetric({
   )
 }
 
-function DetailField({ label, children }: { label: string; children: ReactNode }) {
+function CashflowCategoryCard({ card }: { card: LedgerCashflowCard }) {
+  const isIn = card.direction === 'Inflow'
   return (
-    <div>
-      <p className={labelClass}>{label}</p>
-      <div className="text-sm text-ink">{children}</div>
+    <div
+      className={`rounded-2xl border border-line px-4 py-3.5 shadow-sm ${
+        isIn ? 'bg-emerald-50/70 dark:bg-emerald-950/30' : 'bg-rose-50/70 dark:bg-rose-950/30'
+      }`}
+    >
+      <p className="text-xs font-medium text-muted truncate" title={card.category}>
+        {card.category}
+      </p>
+      <p
+        className={`text-lg font-semibold tabular-nums mt-2 ${
+          isIn ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'
+        }`}
+      >
+        {fmt(card.amount)}
+      </p>
     </div>
   )
 }
 
-export function CashflowPage() {
+function CashflowCardColumn({
+  title,
+  total,
+  cards,
+  tone,
+}: {
+  title: string
+  total: number
+  cards: LedgerCashflowCard[]
+  tone: 'in' | 'out'
+}) {
+  const isIn = tone === 'in'
+  return (
+    <section aria-label={title} className="min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-2.5">
+        <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
+          {isIn ? (
+            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" strokeWidth={2} aria-hidden />
+          ) : (
+            <ArrowDownRight className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" strokeWidth={2} aria-hidden />
+          )}
+          {title}
+        </p>
+        <p className={`text-xs font-semibold tabular-nums ${isIn ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
+          {fmt(total)}
+        </p>
+      </div>
+      {cards.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-line px-4 py-6 text-center text-xs text-subtle">
+          No {isIn ? 'inflows' : 'outflows'} in this period.
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
+          {cards.map((card) => (
+            <CashflowCategoryCard key={card.category} card={card} />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+const CASHFLOW_PAGE_COPY: Record<CashflowAccount, { title: string; subtitle: string }> = {
+  CURRENT: {
+    title: 'Cashflow · Current / Operational',
+    subtitle: 'Day-to-day Current A/c inflow and outflow across revenue, operating, and capital',
+  },
+  SEED: {
+    title: 'Cashflow · Seed Account',
+    subtitle: 'Seed fund capital pool movements',
+  },
+}
+
+export function CashflowPage({ account = 'CURRENT' }: { account?: CashflowAccount }) {
   const { filters, setFilters } = useFinanceFilters()
   const prior = useMemo(() => priorPeriodRange(filters.from, filters.to), [filters.from, filters.to])
-  const [openActionId, setOpenActionId] = useState<string | null>(null)
-  const [detailRow, setDetailRow] = useState<CashflowRow | null>(null)
-  const actionsRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!openActionId) return
-    const onPointer = (event: MouseEvent) => {
-      if (actionsRef.current && !actionsRef.current.contains(event.target as Node)) {
-        setOpenActionId(null)
-      }
-    }
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpenActionId(null)
-    }
-    document.addEventListener('mousedown', onPointer)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onPointer)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [openActionId])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const list = useQuery({
-    queryKey: ['cashflow', filters.from, filters.to, filters.search],
+    queryKey: ['cashflow', account, filters.from, filters.to, filters.search, page, pageSize],
     queryFn: () =>
       financeApi.listCashflow({
+        account,
         from: filters.from,
         to: filters.to,
         search: filters.search,
+        page,
+        page_size: pageSize,
       }),
+    placeholderData: keepPreviousData,
   })
   const summary = useQuery({
-    queryKey: ['ledger-summary', 'cashflow', filters.from, filters.to],
-    queryFn: () => financeApi.ledgerSummary('cashflow', { from: filters.from, to: filters.to }),
+    queryKey: ['ledger-summary', 'cashflow', account, filters.from, filters.to],
+    queryFn: () => financeApi.ledgerSummary('cashflow', { account, from: filters.from, to: filters.to }),
   })
   const priorSummary = useQuery({
-    queryKey: ['ledger-summary', 'cashflow', 'prior', prior?.from, prior?.to],
-    queryFn: () => financeApi.ledgerSummary('cashflow', { from: prior!.from, to: prior!.to }),
+    queryKey: ['ledger-summary', 'cashflow', account, 'prior', prior?.from, prior?.to],
+    queryFn: () => financeApi.ledgerSummary('cashflow', { account, from: prior!.from, to: prior!.to }),
     enabled: Boolean(prior),
   })
   const invoicesSummary = useQuery({
@@ -237,19 +288,18 @@ export function CashflowPage() {
   const inflowDelta = showDelta ? formatPctDelta(pctChange(kpi.total_inflow || 0, prev.total_inflow || 0)) : null
   const outflowDelta = showDelta ? formatPctDelta(pctChange(kpi.total_outflow || 0, prev.total_outflow || 0)) : null
   const netDelta = showDelta ? formatPctDelta(pctChange(kpi.net || 0, prev.net || 0)) : null
-
-  const closeDetail = () => {
-    setDetailRow(null)
-    setOpenActionId(null)
-  }
+  const accountEmpty = summary.isSuccess && !kpi.has_entries
+  const copy = CASHFLOW_PAGE_COPY[account]
 
   return (
-    <>
     <FinancePageShell
-      title="Cashflow"
-      subtitle="Inflow and outflow across revenue, operating, and capital"
+      title={copy.title}
+      subtitle={copy.subtitle}
       filters={filters}
-      onFiltersChange={setFilters}
+      onFiltersChange={(next) => {
+        setPage(1)
+        setFilters(next)
+      }}
       onRefresh={() => {
         void list.refetch()
         void summary.refetch()
@@ -259,7 +309,6 @@ export function CashflowPage() {
       }}
       updatedAt={list.dataUpdatedAt ? new Date(list.dataUpdatedAt) : null}
       searchPlaceholder="Search particulars, category, type, or notes…"
-      promo={<CashflowPromo />}
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
         <CashflowMetricCard
@@ -288,47 +337,22 @@ export function CashflowPage() {
         />
       </div>
 
-      {(kpi.cards?.length || kpi.by_category?.length) ? (
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
-          {(kpi.cards?.length ? kpi.cards : kpi.by_category).map((row) => {
-            const direction = row.direction || 'Net'
-            const isIn = direction === 'Inflow'
-            const isOut = direction === 'Outflow'
-            return (
-              <div
-                key={`${row.category}-${direction}`}
-                className={`rounded-2xl border border-line px-4 py-3.5 shadow-sm ${
-                  isIn
-                    ? 'bg-emerald-50/70 dark:bg-emerald-950/30'
-                    : isOut
-                      ? 'bg-rose-50/70 dark:bg-rose-950/30'
-                      : 'bg-surface/80 backdrop-blur-md'
-                }`}
-              >
-                <p className="text-xs font-medium text-muted truncate" title={row.category}>
-                  {row.category}
-                </p>
-                <p
-                  className={`text-lg font-semibold tabular-nums mt-2 ${
-                    isIn ? 'text-emerald-700 dark:text-emerald-400' : isOut ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'
-                  }`}
-                >
-                  {fmt(row.amount)}
-                </p>
-                <span
-                  className={`inline-flex mt-2 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${
-                    isIn
-                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                      : isOut
-                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
-                        : 'bg-canvas text-muted'
-                  }`}
-                >
-                  {direction}
-                </span>
-              </div>
-            )
-          })}
+      {accountEmpty ? (
+        <div className="mt-4 rounded-2xl border border-dashed border-line bg-surface/80 backdrop-blur-md px-6 py-10 text-center shadow-sm">
+          <p className="text-sm font-semibold text-ink">
+            No {account === 'SEED' ? 'Seed account' : 'Current account'} entries yet
+          </p>
+          <p className="text-xs text-muted mt-1.5">
+            {account === 'SEED'
+              ? "Upload an MIS file with a 'Seed Bank book' sheet to populate this account."
+              : "Upload an MIS file with a 'Bank book' sheet to populate this account."}
+          </p>
+        </div>
+      ) : summary.isSuccess ? (
+        <div className="mt-4 rounded-2xl border border-line bg-surface/60 backdrop-blur-md p-4 shadow-sm grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-4 lg:gap-5">
+          <CashflowCardColumn title="Inflow" total={kpi.total_inflow || 0} cards={kpi.inflow_cards ?? []} tone="in" />
+          <div className="h-px lg:h-auto lg:w-px bg-line" role="separator" aria-orientation="vertical" />
+          <CashflowCardColumn title="Outflow" total={kpi.total_outflow || 0} cards={kpi.outflow_cards ?? []} tone="out" />
         </div>
       ) : null}
 
@@ -348,19 +372,19 @@ export function CashflowPage() {
               label="Total Receivable"
               value={fmt(ar.billed || 0)}
               icon={<CreditCard className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />}
-              valueClass="text-violet-700"
+              valueClass="text-brand"
             />
             <SideMetric
               label="Total Received"
               value={fmt(ar.received || 0)}
               icon={<CheckCircle2 className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />}
-              valueClass="text-emerald-700"
+              valueClass="text-success"
             />
             <SideMetric
               label="Outstanding"
               value={fmt(ar.outstanding || 0)}
               icon={<Clock3 className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />}
-              valueClass="text-rose-700"
+              valueClass="text-danger"
             />
           </div>
         </div>
@@ -379,19 +403,19 @@ export function CashflowPage() {
               label="Total Payable"
               value={fmt(ap.total_payable || 0)}
               icon={<CreditCard className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />}
-              valueClass="text-violet-700"
+              valueClass="text-brand"
             />
             <SideMetric
               label="Total Paid"
               value={fmt(ap.total_paid || 0)}
               icon={<CheckCircle2 className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />}
-              valueClass="text-emerald-700"
+              valueClass="text-success"
             />
             <SideMetric
               label="Outstanding"
               value={fmt(ap.outstanding || 0)}
               icon={<Clock3 className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />}
-              valueClass="text-rose-700"
+              valueClass="text-danger"
             />
           </div>
         </div>
@@ -400,102 +424,109 @@ export function CashflowPage() {
       <div className="mt-5" id="cashflow-recent-transactions">
         <div className="flex items-center justify-between gap-3 mb-3">
           <h3 className="text-sm font-semibold text-ink">Recent Transactions</h3>
-          <a
-            href="#cashflow-recent-transactions"
-            className="text-xs font-medium text-brand hover:text-brand-hover"
-          >
-            View All →
-          </a>
+          {list.data ? <p className="text-xs text-muted tabular-nums">{list.data.count} entries</p> : null}
         </div>
         {list.isLoading ? (
           <p className="p-5 text-sm text-subtle bg-surface/80 backdrop-blur-md border border-line rounded-2xl">Loading…</p>
         ) : (
-          <TableWrap headers={['Date', 'Type', 'Particulars', 'Category', 'Sub', 'Amount', 'Actions']}>
-            {rows.map((row) => (
-              <tr key={row.id} className="border-b border-canvas last:border-0">
-                <td className="px-5 py-3 text-sm text-ink whitespace-nowrap">{row.entry_date}</td>
-                <td className="px-5 py-3 text-sm">
-                  <StatusBadge status={row.direction} />
-                </td>
-                <td className="px-5 py-3 text-sm text-ink">{row.entity || '—'}</td>
-                <td className="px-5 py-3 text-sm text-ink">{row.category}</td>
-                <td className="px-5 py-3 text-sm text-muted">{row.sub_category || '—'}</td>
-                <td className="px-5 py-3 text-sm font-medium tabular-nums text-ink">{fmt(row.amount)}</td>
-                <td className="px-5 py-3">
-                  <div
-                    className="relative inline-flex"
-                    ref={openActionId === row.id ? actionsRef : undefined}
-                  >
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-muted hover:bg-canvas hover:text-ink"
-                      aria-label="More actions"
-                      aria-expanded={openActionId === row.id}
-                      onClick={() =>
-                        setOpenActionId((current) => (current === row.id ? null : row.id))
-                      }
-                    >
-                      <MoreHorizontal className="w-4 h-4" strokeWidth={2} aria-hidden />
-                    </button>
-                    {openActionId === row.id ? (
-                      <div className="absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded-xl border border-line bg-surface/80 backdrop-blur-md py-1 shadow-lg">
-                        <button
-                          type="button"
-                          className="w-full px-3 py-2 text-left text-sm text-ink hover:bg-canvas"
-                          onClick={() => {
-                            setDetailRow(row)
-                            setOpenActionId(null)
-                          }}
-                        >
-                          View details
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
+          <TableWrap
+            headers={['Date', 'Type', 'Particulars', 'Category', 'Sub', 'Amount']}
+            footer={
+              <PulsePaginationFooter
+                page={page}
+                pageSize={pageSize}
+                total={list.data?.count ?? 0}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size)
+                  setPage(1)
+                }}
+              />
+            }
+          >
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-5 py-8 text-center text-sm text-subtle">
+                  No transactions in this period.
                 </td>
               </tr>
-            ))}
+            ) : (
+              rows.map((row) => (
+                <tr key={row.id} className="border-b border-canvas last:border-0">
+                  <td className="px-5 py-3 text-sm text-ink whitespace-nowrap">{row.entry_date}</td>
+                  <td className="px-5 py-3 text-sm">
+                    <StatusBadge status={row.direction} />
+                  </td>
+                  <td className="px-5 py-3 text-sm text-ink">{row.entity || '—'}</td>
+                  <td className="px-5 py-3 text-sm text-ink">{row.category}</td>
+                  <td className="px-5 py-3 text-sm text-muted">{row.sub_category || '—'}</td>
+                  <td className="px-5 py-3 text-sm font-medium tabular-nums text-ink">{fmt(row.amount)}</td>
+                </tr>
+              ))
+            )}
           </TableWrap>
         )}
       </div>
     </FinancePageShell>
-
-    <Modal
-      open={Boolean(detailRow)}
-      title={detailRow ? `${detailRow.direction} · ${detailRow.category}` : 'Transaction'}
-      onClose={closeDetail}
-      footer={
-        <button type="button" className={btnSecondaryClass} onClick={closeDetail}>
-          Close
-        </button>
-      }
-    >
-      {detailRow ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <DetailField label="Date">{detailRow.entry_date}</DetailField>
-          <DetailField label="Type">
-            <StatusBadge status={detailRow.direction} />
-          </DetailField>
-          <DetailField label="Category">{detailRow.category || '—'}</DetailField>
-          <DetailField label="Sub">{detailRow.sub_category || '—'}</DetailField>
-          <DetailField label="Amount">
-            <span className="font-medium tabular-nums">{fmt(detailRow.amount)}</span>
-          </DetailField>
-          <DetailField label="Particulars">{detailRow.entity || '—'}</DetailField>
-          <DetailField label="Voucher no">{detailRow.voucher_no || '—'}</DetailField>
-          <DetailField label="Notes">
-            <p className="whitespace-pre-wrap break-words">{detailRow.notes || '—'}</p>
-          </DetailField>
-        </div>
-      ) : null}
-    </Modal>
-    </>
   )
+}
+
+type PayableTab = 'ALL' | 'PAID' | 'PENDING'
+type InvoiceTab = 'all' | 'outstanding' | 'overdue' | 'paid'
+
+const INVOICE_TABS: { key: InvoiceTab; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'outstanding', label: 'Outstanding' },
+  { key: 'overdue', label: 'Overdue' },
+  { key: 'paid', label: 'Paid' },
+]
+
+/** Mirrors the backend receivables rule: unpaid balance pending more than 30 days since due (or invoice) date. */
+function invoiceOverdue(row: OpsInvoice, today: Date): boolean {
+  if (row.status === 'PAID' || Number(row.balance) <= 0) return false
+  const since = new Date(`${row.due_date || row.invoice_date}T00:00:00`)
+  return (today.getTime() - since.getTime()) / 86_400_000 > 30
+}
+
+function matchesInvoiceTab(row: OpsInvoice, tab: InvoiceTab, today: Date): boolean {
+  const paid = row.status === 'PAID' || Number(row.balance) <= 0
+  if (tab === 'paid') return paid
+  if (tab === 'outstanding') return !paid
+  if (tab === 'overdue') return invoiceOverdue(row, today)
+  return true
+}
+
+/** Status tab backed by `?status=` so other pages can deep-link into a filtered ledger. */
+function useStatusParam<T extends string>(allowed: readonly T[], fallback: T, normalise: (raw: string) => string = (v) => v) {
+  const [params, setParams] = useSearchParams()
+  const raw = normalise(params.get('status') ?? '')
+  const value = (allowed as readonly string[]).includes(raw) ? (raw as T) : fallback
+  const setValue = (next: T) => {
+    setParams(
+      (prev) => {
+        const out = new URLSearchParams(prev)
+        if (next === fallback) out.delete('status')
+        else out.set('status', next.toLowerCase())
+        return out
+      },
+      { replace: true },
+    )
+  }
+  return [value, setValue] as const
+}
+
+/** Pending bills: red once past due, amber inside the 3-day reminder window. */
+function payableDueTone(row: OpsPayable, todayStart: number): string {
+  if (row.status === 'PAID' || !row.due_date) return 'text-muted'
+  const days = (new Date(`${row.due_date}T00:00:00`).getTime() - todayStart) / 86_400_000
+  if (days < 0) return 'text-danger font-medium'
+  if (days <= 3) return 'text-warning font-medium'
+  return 'text-muted'
 }
 
 export function PayablesPage() {
   const { filters, setFilters } = useFinanceFilters()
-  const [tab, setTab] = useState<'ALL' | 'PAID' | 'PENDING'>('ALL')
+  const [tab, setTab] = useStatusParam<PayableTab>(['ALL', 'PAID', 'PENDING'], 'ALL', (v) => v.toUpperCase())
   const list = useQuery({
     queryKey: ['payables', filters.from, filters.to, filters.vendor, filters.search, tab],
     queryFn: () =>
@@ -513,6 +544,7 @@ export function PayablesPage() {
   })
   const rows: OpsPayable[] = list.data?.results ?? []
   const kpi = (summary.data || {}) as LedgerPayablesSummary
+  const [todayStart] = useState(() => new Date().setHours(0, 0, 0, 0))
   const vendors = useMemo(
     () => Array.from(new Set(rows.map((r) => r.vendor).filter(Boolean))).sort(),
     [rows],
@@ -570,18 +602,21 @@ export function PayablesPage() {
         {list.isLoading ? (
           <p className="p-5 text-sm text-subtle">Loading…</p>
         ) : (
-          <TableWrap headers={['Vendor', 'Category', 'Invoice', 'Basic/Pretax', 'GST', 'TDS', 'Total', 'Payable', 'Due', 'Status']}>
+          <TableWrap
+            headers={['Vendor', 'Category', 'Invoice', 'Invoice Date', 'Basic/Pretax', 'GST', 'TDS', 'Total', 'Payable', 'Due Date', 'Status']}
+          >
             {rows.map((row) => (
               <tr key={row.id} className="border-b border-canvas">
                 <td className="px-5 py-3 text-sm font-medium text-ink">{row.vendor}</td>
                 <td className="px-5 py-3 text-sm text-muted">{row.category}</td>
                 <td className="px-5 py-3 text-xs font-mono text-ink">{row.invoice_number}</td>
+                <td className="px-5 py-3 text-sm text-muted whitespace-nowrap">{row.invoice_date ?? '—'}</td>
                 <td className="px-5 py-3 text-sm tabular-nums">{fmt(row.taxable_amount)}</td>
                 <td className="px-5 py-3 text-sm tabular-nums">{fmt(row.gst_amount)}</td>
                 <td className="px-5 py-3 text-sm tabular-nums">{fmt(row.tds_amount)}</td>
                 <td className="px-5 py-3 text-sm tabular-nums">{fmt(row.total_amount)}</td>
                 <td className="px-5 py-3 text-sm font-medium tabular-nums">{fmt(row.payable_amount)}</td>
-                <td className="px-5 py-3 text-sm text-muted">{row.due_date ?? '—'}</td>
+                <td className={`px-5 py-3 text-sm whitespace-nowrap ${payableDueTone(row, todayStart)}`}>{row.due_date ?? '—'}</td>
                 <td className="px-5 py-3 text-sm"><StatusBadge status={row.status} /></td>
               </tr>
             ))}
@@ -680,11 +715,16 @@ export function InvoicesPage() {
     queryKey: ['ledger-summary', 'invoices', filters.from, filters.to],
     queryFn: () => financeApi.ledgerSummary('invoices', { from: filters.from, to: filters.to }),
   })
-  const rows: OpsInvoice[] = list.data?.results ?? []
+  const [tab, setTab] = useStatusParam<InvoiceTab>(['all', 'outstanding', 'overdue', 'paid'], 'all', (v) => v.toLowerCase())
+  const allRows = useMemo<OpsInvoice[]>(() => list.data?.results ?? [], [list.data])
+  const rows = useMemo(() => {
+    const today = new Date()
+    return allRows.filter((row) => matchesInvoiceTab(row, tab, today))
+  }, [allRows, tab])
   const kpi = (summary.data || {}) as LedgerInvoicesSummary
   const clients = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.customer_name).filter(Boolean))).sort(),
-    [rows],
+    () => Array.from(new Set(allRows.map((r) => r.customer_name).filter(Boolean))).sort(),
+    [allRows],
   )
 
   return (
@@ -709,6 +749,20 @@ export function InvoicesPage() {
         <KpiCard label="GST" value={fmt(kpi.gst || 0)} tone="net" />
         <KpiCard label="TDS" value={fmt(kpi.tds || 0)} tone="out" />
       </div>
+      <div className="mb-4 flex flex-wrap gap-2">
+        {INVOICE_TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${
+              tab === key ? 'bg-brand text-white border-brand' : 'bg-surface text-muted border-line hover:text-ink'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {list.isLoading ? (
         <p className="p-5 text-sm text-subtle">Loading…</p>
       ) : (
@@ -724,56 +778,6 @@ export function InvoicesPage() {
               <td className="px-5 py-3 text-sm tabular-nums">{fmt(row.gross_payable ?? row.amount)}</td>
               <td className="px-5 py-3 text-sm font-medium tabular-nums">{fmt(row.net_payable ?? row.amount)}</td>
               <td className="px-5 py-3 text-sm"><StatusBadge status={row.status} /></td>
-            </tr>
-          ))}
-        </TableWrap>
-      )}
-    </FinancePageShell>
-  )
-}
-
-export function FinanceClientsPage() {
-  const { filters, setFilters } = useFinanceFilters()
-  const summary = useQuery({
-    queryKey: ['ledger-summary', 'clients'],
-    queryFn: () => financeApi.ledgerSummary('clients'),
-  })
-  const kpi = (summary.data || {}) as LedgerClientsSummary
-  const clients = useMemo(() => {
-    const rows = kpi.clients || []
-    const q = filters.search.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter((row) => row.name.toLowerCase().includes(q) || row.gst_number.toLowerCase().includes(q))
-  }, [kpi.clients, filters.search])
-
-  return (
-    <FinancePageShell
-      title="Clients"
-      subtitle="Billing accounts across invoices and purchase orders"
-      filters={filters}
-      onFiltersChange={setFilters}
-      onRefresh={() => {
-        void summary.refetch()
-      }}
-      updatedAt={summary.dataUpdatedAt ? new Date(summary.dataUpdatedAt) : null}
-      searchPlaceholder="Search client or GSTN…"
-      showSearch
-    >
-      <p className="text-sm text-muted mb-4">
-        <span className="font-semibold text-ink">{kpi.active_clients || clients.length}</span> active clients with ledger activity
-      </p>
-      {summary.isLoading ? (
-        <p className="p-5 text-sm text-subtle">Loading…</p>
-      ) : (
-        <TableWrap headers={['Client', 'Service line', 'GSTN', 'Active POs', 'Total invoiced', 'Total paid']}>
-          {clients.map((row) => (
-            <tr key={row.id} className="border-b border-canvas">
-              <td className="px-5 py-3 text-sm font-medium text-ink">{row.name}</td>
-              <td className="px-5 py-3 text-sm text-muted">{row.service_line || '—'}</td>
-              <td className="px-5 py-3 text-xs font-mono text-muted">{row.gst_number || '—'}</td>
-              <td className="px-5 py-3 text-sm tabular-nums text-ink">{row.active_pos}</td>
-              <td className="px-5 py-3 text-sm tabular-nums text-ink">{fmt(row.total_invoiced)}</td>
-              <td className="px-5 py-3 text-sm font-medium tabular-nums text-ink">{fmt(row.total_paid)}</td>
             </tr>
           ))}
         </TableWrap>
@@ -801,7 +805,7 @@ export function CapitalPage() {
   return (
     <PageFrame title={title} subtitle="Capital movements in the finance ledger">
       {isLoading ? <p className="p-5 text-sm text-subtle">Loading…</p> : (
-        <table className="w-full">
+        <table className="table-pin-first w-full min-w-[640px]">
           <thead>
             <tr className="bg-canvas border-b border-line">
               {['Counterparty', 'Amount', 'Date', 'Status', 'Notes'].map((h) => (

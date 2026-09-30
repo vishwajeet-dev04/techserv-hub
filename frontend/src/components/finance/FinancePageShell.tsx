@@ -89,7 +89,7 @@ export function FinancePageShell({
   }, [updatedAt])
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto space-y-5">
+    <div className="p-4 sm:p-6 max-w-[1400px] mx-auto space-y-5">
       <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Financial Control</p>

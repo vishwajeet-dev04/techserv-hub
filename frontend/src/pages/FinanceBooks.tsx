@@ -91,13 +91,13 @@ function MetricCard({
           {label}
         </p>
         {isManual ? (
-          <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 shrink-0">
-            <span className="text-[10px] text-emerald-700 font-medium">Manual</span>
+          <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 shrink-0">
+            <span className="text-[10px] text-success font-medium">Manual</span>
           </span>
         ) : null}
       </div>
       <p className={`text-xl font-semibold leading-none ${
-        accent ? 'text-white' : isNegative ? 'text-red-600' : 'text-ink'
+        accent ? 'text-white' : isNegative ? 'text-danger' : 'text-ink'
       }`}>
         {fmtCurrency(value)}
       </p>
@@ -351,10 +351,10 @@ export default function FinanceBooks() {
   }
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-screen-xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7C3AED]">Financial Control · Books</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Financial Control · Books</p>
           <h2 className="text-2xl font-semibold text-ink mt-1">Period metrics</h2>
           <p className="text-xs text-subtle mt-0.5">
             {selectedPeriod ? `Period: ${selectedPeriod.label}` : 'Cash, receivables, and operating position'}

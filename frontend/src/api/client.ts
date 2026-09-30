@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { emitPermissionDenied } from './permissionNotice'
+import { clearWorkspace } from '../lib/workspaces'
 
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -27,6 +28,7 @@ apiClient.interceptors.response.use(
     } else if (status === 401 && !skipAuthRedirect) {
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
+      clearWorkspace()
       window.location.assign('/login')
     }
     return Promise.reject(error)

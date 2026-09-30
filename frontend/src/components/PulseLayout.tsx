@@ -7,13 +7,27 @@ import { useAuth } from '../hooks/useAuth'
 import Logo from './Logo'
 import UniversalCalendar from './UniversalCalendar'
 import ThemeToggle from './ThemeToggle'
+import WorkspaceChip from './WorkspaceChip'
 import { useDateRange } from '../hooks/useDateRange'
 
-const nav = [
-  { to: '/pulse/contacts', label: 'Contacts' },
-  { to: '/pulse/opportunities', label: 'Opportunities' },
-  { to: '/pulse/reminders', label: 'Reminders' },
-  { to: '/pulse/team', label: 'Team Performance' },
+const navGroups: { label: string; items: { to: string; label: string; end?: boolean }[] }[] = [
+  {
+    label: 'CRM',
+    items: [
+      { to: '/pulse/contacts', label: 'Contacts' },
+      { to: '/pulse/opportunities', label: 'Opportunities' },
+      { to: '/pulse/reminders', label: 'Reminders' },
+      { to: '/pulse/team', label: 'Team Performance' },
+    ],
+  },
+  {
+    label: 'Deal-to-Billing Ops',
+    items: [
+      { to: '/pulse/summary', label: 'Summary' },
+      { to: '/pulse/pipeline', label: 'Pipeline' },
+      { to: '/pulse/po-contracts', label: 'PO & Contracts' },
+    ],
+  },
 ]
 
 const PAGE_TITLES: Record<string, string> = {
@@ -21,6 +35,17 @@ const PAGE_TITLES: Record<string, string> = {
   '/pulse/opportunities': 'Opportunities',
   '/pulse/reminders': 'Reminders',
   '/pulse/team': 'Team Performance',
+  '/pulse/summary': 'Ops Summary',
+  '/pulse/pipeline': 'Pipeline',
+  '/pulse/po-contracts': 'PO & Contracts',
+}
+
+const DATE_RANGE_PATHS = ['/pulse/team', '/pulse/summary', '/pulse/pipeline', '/pulse/po-contracts']
+
+function pageTitleFor(pathname: string): string {
+  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]
+  if (pathname.startsWith('/pulse/po-contracts/')) return 'PO & Contracts'
+  return 'Pulse CRM'
 }
 
 function initials(name: string): string {
@@ -33,6 +58,9 @@ function initials(name: string): string {
     .toUpperCase()
 }
 
+const iconBtn =
+  'w-10 h-10 sm:w-9 sm:h-9 rounded-xl border border-line text-muted hover:text-ink hover:bg-canvas flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand shrink-0'
+
 export default function PulseLayout() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -40,8 +68,10 @@ export default function PulseLayout() {
   const [navOpen, setNavOpen] = useState(false)
   const alerts = useQuery({ queryKey: ['alerts'], queryFn: dashboardApi.getAlerts })
   const alertCount = alerts.data?.total_alerts ?? 0
-  const pageTitle = PAGE_TITLES[location.pathname] ?? 'Pulse CRM'
-  const showDateRange = location.pathname === '/pulse/team'
+  const pageTitle = pageTitleFor(location.pathname)
+  const showDateRange = DATE_RANGE_PATHS.some(
+    (p) => location.pathname === p || location.pathname.startsWith(`${p}/`),
+  )
   const { from, to, setRange } = useDateRange()
 
   useEffect(() => {
@@ -67,36 +97,46 @@ export default function PulseLayout() {
         </div>
         <button
           type="button"
-          className="md:hidden p-1.5 rounded-lg text-muted hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          className="md:hidden p-2 rounded-lg text-muted hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           aria-label="Close menu"
           onClick={() => setNavOpen(false)}
         >
           <X className="w-5 h-5" strokeWidth={2} />
         </button>
       </div>
-      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-        {nav.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            onClick={() => setNavOpen(false)}
-            className={({ isActive }) =>
-              `block rounded-xl px-3 py-2.5 text-[13px] ${
-                isActive
-                  ? 'bg-brand-soft text-brand font-semibold'
-                  : 'text-muted hover:bg-canvas hover:text-ink'
-              }`
-            }
-          >
-            {item.label}
-          </NavLink>
+      <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-4">
+        {navGroups.map((group) => (
+          <div key={group.label} className="space-y-0.5">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-brand px-3 mb-1 opacity-80">
+              {group.label}
+            </p>
+            {group.items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => setNavOpen(false)}
+                className={({ isActive }) =>
+                  `block rounded-xl px-3 py-2.5 text-[13px] ${
+                    isActive
+                      ? 'bg-brand-soft text-brand font-semibold'
+                      : 'text-muted hover:bg-canvas hover:text-ink'
+                  }`
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
       <div className="px-3 py-4 border-t border-line">
+        <div className="pb-3 lg:hidden">
+          <WorkspaceChip className="flex w-full" />
+        </div>
         <button
           type="button"
           onClick={() => navigate('/')}
-          className="w-full text-left text-xs text-muted hover:text-brand mb-3"
+          className="w-full text-left text-xs text-muted hover:text-brand mb-3 py-1"
         >
           Back to home
         </button>
@@ -134,11 +174,11 @@ export default function PulseLayout() {
       ) : null}
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="min-h-14 bg-surface/90 backdrop-blur-md border-b border-line px-3 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
+        <header className="min-h-14 bg-surface/90 backdrop-blur-md border-b border-line px-3 sm:px-6 py-2 flex flex-wrap items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <button
               type="button"
-              className="md:hidden p-2 rounded-lg text-muted hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              className="md:hidden p-2.5 rounded-lg text-muted hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               aria-label="Open menu"
               onClick={() => setNavOpen(true)}
             >
@@ -151,25 +191,16 @@ export default function PulseLayout() {
               <span className="text-subtle shrink-0">/</span>
               <span className="font-medium text-ink truncate">{pageTitle}</span>
             </nav>
+            <WorkspaceChip className="hidden lg:inline-flex ml-2" />
           </div>
-          <div className="flex items-center gap-2 shrink-0 max-w-full overflow-x-auto">
-            {showDateRange ? <UniversalCalendar from={from} to={to} onChange={setRange} compact /> : null}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <ThemeToggle />
             {hasAccess('users') ? (
-              <Link
-                to="/settings"
-                title="Settings"
-                aria-label="Settings"
-                className="w-9 h-9 rounded-xl border border-line text-muted hover:text-ink hover:bg-canvas flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand shrink-0"
-              >
+              <Link to="/settings" title="Settings" aria-label="Settings" className={iconBtn}>
                 <Settings className="w-4 h-4" strokeWidth={2} />
               </Link>
             ) : null}
-            <button
-              type="button"
-              title="Notifications"
-              className="relative w-9 h-9 rounded-xl border border-line text-muted hover:bg-canvas flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand shrink-0"
-            >
+            <button type="button" title="Notifications" aria-label="Notifications" className={`relative ${iconBtn}`}>
               <Bell className="w-4 h-4" strokeWidth={2} />
               {alertCount > 0 ? (
                 <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-danger text-white text-[10px] leading-4 text-center">
@@ -178,12 +209,17 @@ export default function PulseLayout() {
               ) : null}
             </button>
             <div
-              className="w-9 h-9 rounded-full bg-brand-soft text-brand flex items-center justify-center text-xs font-semibold shrink-0"
+              className="hidden sm:flex w-9 h-9 rounded-full bg-brand-soft text-brand items-center justify-center text-xs font-semibold shrink-0"
               title={user?.name ?? 'User'}
             >
               {initials(user?.name ?? 'U')}
             </div>
           </div>
+          {showDateRange ? (
+            <div className="order-last w-full sm:order-none sm:w-auto flex justify-end">
+              <UniversalCalendar from={from} to={to} onChange={setRange} compact />
+            </div>
+          ) : null}
         </header>
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
           <Outlet />

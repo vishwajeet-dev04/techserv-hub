@@ -51,13 +51,13 @@ export default function FinanceMis() {
   })
 
   if (!isAdmin) {
-    return <p className="p-6 text-sm text-muted">MIS upload is only available for Admin.</p>
+    return <p className="p-4 sm:p-6 text-sm text-muted">MIS upload is only available for Admin.</p>
   }
 
   const rows = list.data?.results ?? []
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-screen-xl mx-auto space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Financial Control</p>

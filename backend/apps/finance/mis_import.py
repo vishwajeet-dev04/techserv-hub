@@ -11,6 +11,7 @@ from openpyxl import load_workbook
 
 from apps.business.models import Company, CompanyStatus
 from apps.finance.models import (
+    CashflowAccount,
     CashflowBucket,
     CashflowDirection,
     CashflowEntry,
@@ -18,6 +19,7 @@ from apps.finance.models import (
     InvoiceStatus,
     Payable,
     PayableStatus,
+    payable_due_date,
 )
 
 GST_MARKERS = ('gst', 'cgst', 'sgst', 'igst', 'unclaimed')
@@ -256,7 +258,8 @@ def import_purchase_register(rows: list[tuple], result: dict) -> None:
             'tds_amount': tds,
             'total_amount': gross or (taxable + gst),
             'payable_amount': payable,
-            'due_date': entry_date,
+            'invoice_date': entry_date,
+            'due_date': payable_due_date(entry_date),
             'status': PayableStatus.PENDING,
             'notes': f"MIS Voucher: {_norm(_cell(row, headers, 'voucher no.'))}".strip(),
         }
@@ -272,7 +275,12 @@ def import_purchase_register(rows: list[tuple], result: dict) -> None:
             result['payables']['updated'] += 1
 
 
-def import_bank_book(rows: list[tuple], result: dict) -> None:
+def import_bank_book(
+    rows: list[tuple],
+    result: dict,
+    account: str = CashflowAccount.CURRENT,
+    sheet_label: str = 'Bank book',
+) -> None:
     header_idx = None
     headers = None
     for index, row in enumerate(rows):
@@ -281,7 +289,7 @@ def import_bank_book(rows: list[tuple], result: dict) -> None:
             header_idx, headers = index, mapping
             break
     if header_idx is None or headers is None:
-        result['errors'].append({'sheet': 'Bank book', 'message': 'Header row not found.'})
+        result['errors'].append({'sheet': sheet_label, 'message': 'Header row not found.'})
         return
 
     vch_key = 'vch type' if 'vch type' in headers else 'voucher type'
@@ -332,7 +340,7 @@ def import_bank_book(rows: list[tuple], result: dict) -> None:
 
         entry_date = parsed_date or last_date
         if not entry_date:
-            result['errors'].append({'sheet': 'Bank book', 'row': excel_row, 'message': 'Missing date.'})
+            result['errors'].append({'sheet': sheet_label, 'row': excel_row, 'message': 'Missing date.'})
             continue
 
         voucher_no = _norm(_cell(row, headers, vch_no_key))
@@ -377,6 +385,7 @@ def import_bank_book(rows: list[tuple], result: dict) -> None:
             continue
 
         lookup = {
+            'account': account,
             'entry_date': entry_date,
             'voucher_no': (voucher_no or ('OPENING' if is_opening else ''))[:80],
             'direction': direction,
@@ -387,7 +396,7 @@ def import_bank_book(rows: list[tuple], result: dict) -> None:
             'sub_category': sub_category[:100],
             'entity': entity[:255],
             'amount': amount,
-            'notes': f'Bank book {vch_type} {voucher_no}'.strip(),
+            'notes': f'{sheet_label} {vch_type} {voucher_no}'.strip(),
         }
         existing = CashflowEntry.objects.filter(**lookup).first()
         if existing:
@@ -471,6 +480,7 @@ def import_mis_workbook(content: bytes) -> dict:
     sales = _find_sheet(sheets, 'Sales Register', 'Sales Registry')
     purchase = _find_sheet(sheets, 'Purchase Register', 'Purchase Registry')
     bank = _find_sheet(sheets, 'Bank book', 'Bank Book')
+    seed_bank = _find_sheet(sheets, 'Seed Bank book', 'Seed Bank Book', 'Seed bank book')
 
     if sales is None:
         result['errors'].append({'sheet': 'Sales Register', 'message': 'Sheet missing.'})
@@ -486,6 +496,9 @@ def import_mis_workbook(content: bytes) -> dict:
         result['errors'].append({'sheet': 'Bank book', 'message': 'Sheet missing.'})
     else:
         import_bank_book(bank, result)
+
+    if seed_bank is not None:
+        import_bank_book(seed_bank, result, account=CashflowAccount.SEED, sheet_label='Seed Bank book')
 
     reconcile_statuses_from_bank(result)
     result.pop('touched_invoice_ids', None)

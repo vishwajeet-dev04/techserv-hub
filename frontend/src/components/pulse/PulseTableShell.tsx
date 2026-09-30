@@ -7,6 +7,7 @@ export default function PulseTableShell({
   count,
   headerRight,
   footer,
+  mobileCards,
 }: {
   children: ReactNode
   minWidth?: string
@@ -14,6 +15,8 @@ export default function PulseTableShell({
   count?: number
   headerRight?: ReactNode
   footer?: ReactNode
+  /** Stacked card list shown instead of the table below the sm breakpoint. */
+  mobileCards?: ReactNode
 }) {
   return (
     <div className="mt-5 bg-surface/80 backdrop-blur-md border border-line rounded-2xl shadow-sm overflow-hidden">
@@ -25,11 +28,14 @@ export default function PulseTableShell({
               <span className="text-muted font-medium"> ({count})</span>
             ) : null}
           </p>
-          {headerRight ? <div className="flex items-center gap-2 shrink-0">{headerRight}</div> : null}
+          {headerRight ? (
+            <div className="flex items-center gap-2 min-w-0 max-w-full sm:shrink-0">{headerRight}</div>
+          ) : null}
         </div>
       ) : null}
-      <div className="overflow-x-auto">
-        <table className={`w-full text-sm ${minWidth ?? ''}`}>{children}</table>
+      {mobileCards ? <div className="sm:hidden divide-y divide-line">{mobileCards}</div> : null}
+      <div className={`overflow-x-auto ${mobileCards ? 'hidden sm:block' : ''}`}>
+        <table className={`table-pin-first w-full text-sm ${minWidth ?? ''}`}>{children}</table>
       </div>
       {footer ? (
         <div className="px-4 py-3 border-t border-line bg-canvas/40 flex flex-wrap items-center justify-between gap-3">
@@ -90,7 +96,7 @@ export function PulsePaginationFooter({
         <div className="inline-flex items-center gap-1">
           <button
             type="button"
-            className="px-2.5 py-1 text-xs rounded-lg border border-line bg-surface text-muted hover:text-ink disabled:opacity-40"
+            className="px-3 py-2 sm:px-2.5 sm:py-1 text-xs rounded-lg border border-line bg-surface text-muted hover:text-ink disabled:opacity-40"
             disabled={safePage <= 1}
             onClick={() => onPageChange(safePage - 1)}
           >
@@ -101,7 +107,7 @@ export function PulsePaginationFooter({
           </span>
           <button
             type="button"
-            className="px-2.5 py-1 text-xs rounded-lg border border-line bg-surface text-muted hover:text-ink disabled:opacity-40"
+            className="px-3 py-2 sm:px-2.5 sm:py-1 text-xs rounded-lg border border-line bg-surface text-muted hover:text-ink disabled:opacity-40"
             disabled={safePage >= totalPages}
             onClick={() => onPageChange(safePage + 1)}
           >

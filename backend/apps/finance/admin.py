@@ -62,7 +62,7 @@ class InvoiceAdmin(admin.ModelAdmin):
 
 @admin.register(Payable)
 class PayableAdmin(admin.ModelAdmin):
-    list_display = ['vendor', 'invoice_number', 'payable_amount', 'tds_amount', 'status', 'due_date']
+    list_display = ['vendor', 'invoice_number', 'payable_amount', 'tds_amount', 'status', 'invoice_date', 'due_date']
     list_filter = ['status']
     search_fields = ['vendor', 'invoice_number']
 

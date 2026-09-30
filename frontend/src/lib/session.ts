@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { authApi } from '../api/auth'
+import { clearWorkspace } from './workspaces'
 
 /** Clear local session and hard-navigate to login so auth state cannot stick. */
 export async function endSession(queryClient: QueryClient): Promise<void> {
@@ -16,6 +17,7 @@ export async function endSession(queryClient: QueryClient): Promise<void> {
 
   localStorage.removeItem('access_token')
   localStorage.removeItem('refresh_token')
+  clearWorkspace()
   queryClient.clear()
   window.location.assign('/login')
 }

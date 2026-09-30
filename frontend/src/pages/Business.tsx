@@ -50,23 +50,23 @@ const UsersIcon = () => (
 const statusConfig: Record<CompanyStatus, { label: string; className: string; dot: string }> = {
   CUSTOMER: {
     label: 'Customer',
-    className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    className: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800',
     dot: 'bg-emerald-600',
   },
   PROSPECT: {
     label: 'Prospect',
-    className: 'bg-blue-50 text-blue-700 border border-blue-200',
+    className: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800',
     dot: 'bg-blue-600',
   },
   PARTNER: {
     label: 'Partner',
-    className: 'bg-violet-50 text-violet-700 border border-violet-200',
+    className: 'bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800',
     dot: 'bg-violet-600',
   },
   INACTIVE: {
     label: 'Inactive',
-    className: 'bg-[#f5f5f7] text-[#aeaeb2] border border-[#e5e5ea]',
-    dot: 'bg-[#aeaeb2]',
+    className: 'bg-canvas text-subtle border border-line',
+    dot: 'bg-subtle',
   },
 }
 
@@ -116,7 +116,7 @@ function StatusBadge({ status }: { status: CompanyStatus }) {
 }
 
 function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-[#f5f5f7] rounded-xl ${className ?? ''}`} />
+  return <div className={`animate-pulse bg-canvas rounded-xl ${className ?? ''}`} />
 }
 
 function TableSkeleton() {
@@ -132,13 +132,13 @@ function TableSkeleton() {
 function EmptyState({ filtered }: { filtered: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-20">
-      <div className="w-14 h-14 bg-[#f5f5f7] rounded-2xl flex items-center justify-center mb-4 text-[#aeaeb2]">
+      <div className="w-14 h-14 bg-canvas rounded-2xl flex items-center justify-center mb-4 text-subtle">
         <BuildingIcon />
       </div>
-      <p className="text-sm font-medium text-[#6e6e73]">
+      <p className="text-sm font-medium text-muted">
         {filtered ? 'No companies match your search' : 'No companies yet'}
       </p>
-      <p className="text-xs text-[#aeaeb2] mt-1">
+      <p className="text-xs text-subtle mt-1">
         {filtered ? 'Try adjusting your filters' : 'Add your first company to get started'}
       </p>
     </div>
@@ -153,7 +153,7 @@ function CompanyRow({ company }: { company: Company }) {
 
   return (
     <tr
-      className="group border-b border-[#f5f5f7] last:border-0 hover:bg-[#f9f9fb] transition-colors duration-100 cursor-pointer"
+      className="group border-b border-canvas last:border-0 hover:bg-canvas transition-colors duration-100 cursor-pointer"
       onClick={() => navigate(`/business/${company.id}`)}
     >
       <td className="px-5 py-3.5">
@@ -162,9 +162,9 @@ function CompanyRow({ company }: { company: Company }) {
             <span className="text-white text-xs font-semibold">{initials}</span>
           </div>
           <div>
-            <p className="text-sm font-medium text-[#1a1a1a]">{company.name}</p>
+            <p className="text-sm font-medium text-ink">{company.name}</p>
             {company.industry ? (
-              <p className="text-xs text-[#aeaeb2] mt-0.5">{company.industry}</p>
+              <p className="text-xs text-subtle mt-0.5">{company.industry}</p>
             ) : null}
           </div>
         </div>
@@ -174,12 +174,12 @@ function CompanyRow({ company }: { company: Company }) {
       </td>
       <td className="px-5 py-3.5">
         {company.location ? (
-          <div className="flex items-center gap-1.5 text-[#6e6e73]">
+          <div className="flex items-center gap-1.5 text-muted">
             <LocationIcon />
             <span className="text-xs">{company.location}</span>
           </div>
         ) : (
-          <span className="text-xs text-[#aeaeb2]">—</span>
+          <span className="text-xs text-subtle">—</span>
         )}
       </td>
       <td className="px-5 py-3.5">
@@ -189,28 +189,28 @@ function CompanyRow({ company }: { company: Company }) {
             target="_blank"
             rel="noopener noreferrer"
             onClick={(event) => event.stopPropagation()}
-            className="flex items-center gap-1.5 text-[#6e6e73] hover:text-violet-600 transition-colors"
+            className="flex items-center gap-1.5 text-muted hover:text-brand-hover transition-colors"
           >
             <GlobeIcon />
             <span className="text-xs truncate max-w-[140px]">{websiteLabel(company.website)}</span>
           </a>
         ) : (
-          <span className="text-xs text-[#aeaeb2]">—</span>
+          <span className="text-xs text-subtle">—</span>
         )}
       </td>
       <td className="px-5 py-3.5">
-        <span className="text-xs font-medium text-[#1a1a1a]">{company.deal_count ?? 0}</span>
+        <span className="text-xs font-medium text-ink">{company.deal_count ?? 0}</span>
       </td>
       <td className="px-5 py-3.5">
-        <div className="flex items-center gap-1.5 text-[#6e6e73]">
+        <div className="flex items-center gap-1.5 text-muted">
           <UsersIcon />
           <span className="text-xs">{company.contact_count ?? 0}</span>
         </div>
       </td>
       <td className="px-5 py-3.5">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-xs text-[#6e6e73]">{company.owner_name ?? '—'}</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-[#d1d1d6] opacity-0 group-hover:opacity-100 transition-opacity duration-200 shrink-0">
+          <span className="text-xs text-muted">{company.owner_name ?? '—'}</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-subtle opacity-0 group-hover:opacity-100 transition-opacity duration-200 shrink-0">
             <path d="M9 18l6-6-6-6" />
           </svg>
         </div>
@@ -235,7 +235,7 @@ function FilterBtn({
       className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-200 active:scale-95 ${
         active
           ? 'bg-violet-600 text-white border border-violet-600'
-          : 'bg-surface border border-[#e5e5ea] text-[#6e6e73] hover:border-[#d1d1d6] hover:text-[#1a1a1a]'
+          : 'bg-surface border border-line text-muted hover:border-subtle hover:text-ink'
       }`}
     >
       {label}
@@ -277,12 +277,12 @@ export default function Business() {
   const companies = data?.results ?? []
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-screen-xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7C3AED]">Accounts</p>
-          <h2 className="text-2xl font-semibold text-[#1a1a1a] mt-1">Business</h2>
-          <p className="text-xs text-[#aeaeb2] mt-0.5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Accounts</p>
+          <h2 className="text-2xl font-semibold text-ink mt-1">Business</h2>
+          <p className="text-xs text-subtle mt-0.5">
             {data ? `${data.count} companies in the TechServ funnel` : 'Companies and contacts'}
           </p>
         </div>
@@ -300,7 +300,7 @@ export default function Business() {
 
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#aeaeb2]">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-subtle">
             <SearchIcon />
           </span>
           <input
@@ -313,9 +313,9 @@ export default function Business() {
               setSearch(e.target.value)
               setPage(1)
             }}
-            className="pl-9 pr-14 py-2 bg-surface border border-[#e5e5ea] rounded-xl text-sm text-[#1a1a1a] placeholder:text-[#aeaeb2] focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors w-72"
+            className="pl-9 pr-14 py-2 bg-surface border border-line rounded-xl text-sm text-ink placeholder:text-subtle focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus-visible:ring-2 focus-visible:ring-violet-400 transition-colors w-72"
           />
-          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-[#aeaeb2] bg-[#f5f5f7] border border-[#e5e5ea] rounded-md px-1.5 py-0.5">
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-subtle bg-canvas border border-line rounded-md px-1.5 py-0.5">
             ⌘K
           </span>
         </div>
@@ -334,20 +334,21 @@ export default function Business() {
         </div>
       </div>
 
-      <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl overflow-hidden">
+      <div className="bg-surface border border-line shadow-sm rounded-2xl overflow-hidden">
         {isLoading ? (
           <TableSkeleton />
         ) : !data || companies.length === 0 ? (
           <EmptyState filtered={isFiltered} />
         ) : (
           <>
-            <table className="w-full">
+            <div className="overflow-x-auto">
+            <table className="table-pin-first w-full min-w-[760px]">
               <thead>
-                <tr className="border-b border-[#e5e5ea] bg-[#f9f9fb]">
+                <tr className="border-b border-line bg-canvas">
                   {['Company', 'Status', 'Location', 'Website', 'Deals', 'Contacts', 'Owner'].map((heading) => (
                     <th
                       key={heading}
-                      className="px-5 py-3.5 text-left text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest"
+                      className="px-5 py-3.5 text-left text-[10px] font-semibold text-subtle uppercase tracking-widest"
                     >
                       {heading}
                     </th>
@@ -360,8 +361,9 @@ export default function Business() {
                 ))}
               </tbody>
             </table>
-            <div className="flex items-center justify-between px-5 py-3 border-t border-[#e5e5ea]">
-              <p className="text-xs text-[#6e6e73]">
+            </div>
+            <div className="flex items-center justify-between px-5 py-3 border-t border-line">
+              <p className="text-xs text-muted">
                 Page {page} · {data.count} total
               </p>
               <div className="flex items-center gap-2">
@@ -369,7 +371,7 @@ export default function Business() {
                   type="button"
                   onClick={() => setPage((p) => p - 1)}
                   disabled={!data.previous}
-                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-surface border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] active:scale-95 transition-transform"
+                  className="px-3 py-1.5 rounded-xl text-xs text-muted bg-surface border border-line disabled:opacity-30 hover:text-ink hover:border-subtle active:scale-95 transition-transform"
                 >
                   Previous
                 </button>
@@ -377,7 +379,7 @@ export default function Business() {
                   type="button"
                   onClick={() => setPage((p) => p + 1)}
                   disabled={!data.next}
-                  className="px-3 py-1.5 rounded-xl text-xs text-[#6e6e73] bg-surface border border-[#e5e5ea] disabled:opacity-30 hover:text-[#1a1a1a] hover:border-[#d1d1d6] active:scale-95 transition-transform"
+                  className="px-3 py-1.5 rounded-xl text-xs text-muted bg-surface border border-line disabled:opacity-30 hover:text-ink hover:border-subtle active:scale-95 transition-transform"
                 >
                   Next
                 </button>

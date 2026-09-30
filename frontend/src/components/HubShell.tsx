@@ -7,6 +7,7 @@ import { endSession } from '../lib/session'
 import Logo from './Logo'
 import HomeButton from './HomeButton'
 import ThemeToggle from './ThemeToggle'
+import WorkspaceChip from './WorkspaceChip'
 
 function initials(name: string): string {
   return name
@@ -25,7 +26,8 @@ export default function HubShell() {
   const [profileOpen, setProfileOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const profileRef = useRef<HTMLDivElement | null>(null)
-  const showHome = location.pathname !== '/'
+  const selecting = location.pathname.startsWith('/select-company')
+  const showHome = location.pathname !== '/' && !selecting
 
   useEffect(() => {
     if (!profileOpen) return
@@ -57,8 +59,10 @@ export default function HubShell() {
     <div className="min-h-screen bg-transparent text-ink flex flex-col">
       <header className="relative z-50 h-16 bg-surface/90 backdrop-blur-md border-b border-line px-4 sm:px-6 md:px-10 flex items-center justify-between gap-3 shrink-0">
         <div className="flex items-center gap-3 sm:gap-5 min-w-0">
-          <Logo height={34} className="shrink-0" />
+          <Logo height={34} className="shrink-0 hidden min-[420px]:block" />
+          <Logo height={28} className="shrink-0 min-[420px]:hidden" />
           {showHome ? <HomeButton /> : null}
+          {!selecting ? <WorkspaceChip className="hidden sm:inline-flex" /> : null}
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
@@ -68,7 +72,7 @@ export default function HubShell() {
               to="/settings"
               title="Settings"
               aria-label="Settings"
-              className="w-9 h-9 rounded-xl text-muted hover:text-ink hover:bg-canvas flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              className="w-10 h-10 sm:w-9 sm:h-9 rounded-xl text-muted hover:text-ink hover:bg-canvas flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
               <Settings className="w-4 h-4" strokeWidth={2} aria-hidden />
             </Link>
@@ -99,12 +103,17 @@ export default function HubShell() {
               {profileOpen ? (
                 <div
                   role="menu"
-                  className="absolute right-0 top-full mt-1.5 z-50 min-w-[160px] rounded-xl border border-line bg-surface shadow-lg py-1"
+                  className="absolute right-0 top-full mt-1.5 z-50 min-w-[200px] rounded-xl border border-line bg-surface shadow-lg py-1"
                 >
                   <div className="px-3 py-2 border-b border-canvas sm:hidden">
                     <p className="text-xs font-medium text-ink truncate">{user.name}</p>
                     <p className="text-[11px] text-muted">{user.role}</p>
                   </div>
+                  {!selecting ? (
+                    <div className="px-2 py-1.5 border-b border-canvas sm:hidden" onClick={() => setProfileOpen(false)}>
+                      <WorkspaceChip className="flex w-full" />
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     role="menuitem"

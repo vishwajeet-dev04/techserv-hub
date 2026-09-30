@@ -20,6 +20,7 @@ urlpatterns = [
     path('opportunities/import/', views.opportunities_import, name='pulse-opportunity-import'),
     path('opportunities/<uuid:pk>/', views.OpportunityDetailView.as_view(), name='pulse-opportunity-detail'),
     path('opportunities/<uuid:pk>/activities/', views.OpportunityActivityListView.as_view(), name='pulse-opportunity-activities'),
+    path('opportunities/<uuid:pk>/documents/', views.opportunity_documents, name='pulse-opportunity-documents'),
     path('ops-updates/', views.OpsUpdateListView.as_view(), name='pulse-ops-updates'),
     path('attachments/<uuid:pk>/preview/', views.attachment_preview, name='pulse-attachment-preview'),
     path('reminders/', views.ReminderListCreateView.as_view(), name='pulse-reminder-list'),

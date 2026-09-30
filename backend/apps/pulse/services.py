@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
+from django.db import transaction
 from django.db.models import ProtectedError
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError as DrfValidationError
@@ -18,7 +19,9 @@ from apps.pulse.constants import (
     SERVICE_PILLARS,
     STAGE_ATTACHMENT_EXTENSIONS,
     SUB_CATEGORIES,
+    TERMINAL_STAGES,
     WON_STAGES,
+    allowed_next_stages,
     coerce_currency,
     coerce_pillar,
     coerce_sales_stage,
@@ -55,6 +58,14 @@ from apps.pulse.repositories import (
 )
 
 PLACEHOLDER = '—'
+
+
+def _as_date_or_none(value):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        return date.fromisoformat(value) if value.strip() else None
+    return value or None
 
 
 def _require(fields: dict[str, str], mapping: dict[str, str]) -> None:
@@ -309,6 +320,15 @@ class PulseService:
         if uploads and not stage_changing:
             raise DrfValidationError({'files': 'Attachments are only allowed when changing sales stage.'})
         if stage_changing:
+            target_stage = coerce_sales_stage(str(next_stage or ''))
+            if previous_stage in TERMINAL_STAGES:
+                raise DrfValidationError({
+                    'stage': f'{previous_stage} is a final stage; the sales stage can no longer change.',
+                })
+            if target_stage not in allowed_next_stages(previous_stage):
+                raise DrfValidationError({
+                    'stage': f'Sales stage can only move forward from {previous_stage}.',
+                })
             note = (stage_change_note if stage_change_note is not None else fields.get('stage_note') or '').strip()
             follow_up = fields.get('follow_up_date', instance.follow_up_date)
             if not note:
@@ -351,6 +371,22 @@ class PulseService:
             comments=fields.get('comments', instance.comments),
         )
         payload.pop('prospect_number', None)
+        follow_up_changing = (
+            not stage_changing
+            and 'follow_up_date' in fields
+            and _as_date_or_none(payload.get('follow_up_date')) != previous_follow_up
+        )
+        follow_up_note = ''
+        if follow_up_changing:
+            if previous_stage in TERMINAL_STAGES:
+                raise DrfValidationError({
+                    'follow_up_date': f'{previous_stage} is a final stage; the follow-up date can no longer change.',
+                })
+            follow_up_note = (
+                stage_change_note if stage_change_note is not None else fields.get('stage_note') or ''
+            ).strip()
+            if not follow_up_note:
+                raise DrfValidationError({'stage_note': 'Notes are required when changing the follow-up date.'})
         instance.owner_name = payload['owner_name']
         instance.owner = owner
         for key, value in payload.items():
@@ -371,6 +407,19 @@ class PulseService:
                 follow_up_date=saved.follow_up_date,
             )
             self._save_stage_attachments(activity, uploads, actor=actor)
+        elif follow_up_changing:
+            if follow_up_note not in (saved.comments or ''):
+                saved.comments = f'{saved.comments}\n{follow_up_note}'.strip() if saved.comments else follow_up_note
+                saved = self.opportunities.save(saved)
+            OpportunityActivity.objects.create(
+                opportunity=saved,
+                actor=actor,
+                action=OpportunityActivityAction.FOLLOW_UP_CHANGE,
+                from_stage=saved.stage,
+                to_stage=saved.stage,
+                note=follow_up_note,
+                follow_up_date=saved.follow_up_date,
+            )
         self._sync_opportunity_date_reminders(
             saved,
             previous_follow_up=previous_follow_up,
@@ -484,6 +533,39 @@ class PulseService:
                 byte_size=getattr(upload, 'size', None) or 0,
                 uploaded_by=actor,
             )
+
+    def add_opportunity_documents(
+        self,
+        opportunity: Opportunity,
+        uploads,
+        *,
+        note: str = '',
+        actor=None,
+    ) -> OpportunityActivity:
+        if opportunity.stage not in WON_STAGES:
+            raise DrfValidationError({'stage': 'Documents can only be added to a Win opportunity.'})
+        uploads = list(uploads or [])
+        if not uploads:
+            raise DrfValidationError({'files': 'Attach at least one corrected document.'})
+        note = (note or '').strip()
+        if not note:
+            raise DrfValidationError({'note': 'Explain what was corrected.'})
+        self._validate_stage_attachments(uploads)
+        with transaction.atomic():
+            activity = OpportunityActivity.objects.create(
+                opportunity=opportunity,
+                actor=actor,
+                action=OpportunityActivityAction.DOCUMENT_UPDATE,
+                from_stage=opportunity.stage,
+                to_stage=opportunity.stage,
+                note=note,
+                follow_up_date=opportunity.follow_up_date,
+            )
+            self._save_stage_attachments(activity, uploads, actor=actor)
+            from apps.deals.po_issue_service import resolve_open_issues_for_documents
+
+            resolve_open_issues_for_documents(opportunity, activity=activity, actor=actor)
+        return activity
 
     def list_opportunity_activities(self, opportunity_id):
         return (

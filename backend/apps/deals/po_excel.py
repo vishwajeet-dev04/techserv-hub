@@ -122,10 +122,11 @@ def parse_po_row(raw, headers: dict[str, int]) -> dict | None:
         'agreement': cell_text(cell_at(raw, headers, 'agreement'))[:40],
         'start_date': as_date(cell_at(raw, headers, 'start date')),
         'end_date': as_date(cell_at(raw, headers, 'end date')),
-        'expiry': as_date(cell_at(raw, headers, 'expiry')),
+        'expiry': as_date(cell_at(raw, headers, 'hand over date', 'handover date', 'expiry')),
         'total_value': as_money(cell_at(raw, headers, 'total value')),
         'value_per_invoice': as_money(cell_at(raw, headers, 'value per invoice')),
         'billing_cycle': cell_text(cell_at(raw, headers, 'billing cycle'))[:80],
+        'milestone_details': cell_text(cell_at(raw, headers, 'milestone details'))[:255],
         'billing_due': cell_text(cell_at(raw, headers, 'billing due'))[:120],
     }
 
@@ -173,8 +174,8 @@ def build_po_workbook(rows: list[list], *, with_star_row: bool = False, with_val
         _add_list_validation(sheet, 2, BILLING_ENTITIES)
         _add_list_validation(sheet, 3, PO_SERVICE_PILLARS)
         _add_list_validation(sheet, 6, AGREEMENTS)
-        _add_list_validation(sheet, 12, BILLING_CYCLES)
-        _add_list_validation(sheet, 13, BILLING_DUES)
+        _add_list_validation(sheet, PO_WORKFLOW_HEADERS.index('Billing Cycle') + 1, BILLING_CYCLES)
+        _add_list_validation(sheet, PO_WORKFLOW_HEADERS.index('Billing Due') + 1, BILLING_DUES)
     _autosize(sheet)
     buffer = io.BytesIO()
     workbook.save(buffer)
@@ -199,6 +200,7 @@ def po_export_row(item) -> list:
         float(item.total_value) if item.total_value is not None else '',
         float(item.value_per_invoice) if item.value_per_invoice is not None else '',
         item.billing_cycle,
+        item.milestone_details,
         item.billing_due,
     ]
 
@@ -217,5 +219,6 @@ def dummy_po_rows() -> list[list]:
         17100000,
         300000,
         'Monthly',
+        '',
         '1st of Month',
     ]]

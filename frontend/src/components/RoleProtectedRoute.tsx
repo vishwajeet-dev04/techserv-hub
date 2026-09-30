@@ -14,7 +14,7 @@ export default function RoleProtectedRoute({ allowedRoles, children }: RoleProte
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full py-24">
-        <p className="text-sm text-[#6e6e73]">Loading...</p>
+        <p className="text-sm text-muted">Loading...</p>
       </div>
     )
   }

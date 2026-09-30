@@ -61,6 +61,19 @@ WON_STAGES = {'Win'}
 LOST_STAGES = {'Lost', 'Cancelled'}
 CLOSED_OUT_STAGES = WON_STAGES | LOST_STAGES
 OPEN_PIPELINE_STAGES = [s for s in SALES_STAGES if s not in CLOSED_OUT_STAGES]
+PIPELINE_ORDER = OPEN_PIPELINE_STAGES
+TERMINAL_STAGES = CLOSED_OUT_STAGES
+
+
+def allowed_next_stages(stage: str) -> list[str]:
+    """Stages an opportunity may move to: later pipeline stages or any terminal stage."""
+    if stage in TERMINAL_STAGES:
+        return []
+    if stage in PIPELINE_ORDER:
+        later = PIPELINE_ORDER[PIPELINE_ORDER.index(stage) + 1:]
+    else:
+        later = list(PIPELINE_ORDER)
+    return later + [s for s in SALES_STAGES if s in TERMINAL_STAGES]
 
 CONTACT_HEADERS = [
     'Company Name',

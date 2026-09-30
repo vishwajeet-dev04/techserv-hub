@@ -150,6 +150,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'pulse.send_opportunity_date_reminders',
         'schedule': crontab(hour=9, minute=0),
     },
+    'finance-payable-due-reminders-daily': {
+        'task': 'finance.send_payable_due_reminders',
+        'schedule': crontab(hour=9, minute=0),
+    },
 }
 
 FRONTEND_URL = config('FRONTEND_URL', default='')

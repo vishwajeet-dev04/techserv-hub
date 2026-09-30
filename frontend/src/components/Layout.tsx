@@ -1,13 +1,14 @@
 import { Component, useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Menu, Settings, X } from 'lucide-react'
+import { ChevronDown, Menu, Settings, X } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { endSession } from '../lib/session'
 import Logo from './Logo'
 import HomeButton from './HomeButton'
 import ThemeToggle from './ThemeToggle'
 import UniversalCalendar from './UniversalCalendar'
+import WorkspaceChip from './WorkspaceChip'
 import { useDateRange } from '../hooks/useDateRange'
 
 class PageErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -26,7 +27,7 @@ class PageErrorBoundary extends Component<{ children: ReactNode }, { hasError: b
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="mt-3 text-xs text-violet-600 hover:text-violet-700"
+              className="mt-3 text-xs text-brand hover:text-brand-hover"
             >
               Reload
             </button>
@@ -77,14 +78,34 @@ const navItems: NavItem[] = [
   { label: 'PO & Contracts', path: '/deals', module: 'deals', icon: <BriefcaseIcon /> },
 ]
 
-const financeNav = {
+interface FinanceNavEntry {
+  label: string
+  path: string
+  children?: { label: string; path: string }[]
+}
+
+const financeNav: Record<'main' | 'capital' | 'system', FinanceNavEntry[]> = {
   main: [
     { label: 'Dashboard', path: '/finance' },
-    { label: 'Cashflow', path: '/finance/cashflow' },
-    { label: 'Clients', path: '/finance/clients' },
+    {
+      label: 'Cashflow',
+      path: '/finance/cashflow',
+      children: [
+        { label: 'Current / Operational', path: '/finance/cashflow/current' },
+        { label: 'Seed Account', path: '/finance/cashflow/seed' },
+      ],
+    },
+    { label: 'Receivables', path: '/finance/invoices' },
     { label: 'Payables', path: '/finance/payables' },
+    {
+      label: 'Master Data',
+      path: '/finance/master-data',
+      children: [
+        { label: 'Clients', path: '/finance/master-data/clients' },
+        { label: 'Vendors', path: '/finance/master-data/vendors' },
+      ],
+    },
     { label: 'PO Management', path: '/finance/purchase-orders' },
-    { label: 'Receivable', path: '/finance/invoices' },
     { label: 'Compliance Calendar', path: '/finance/compliance' },
   ],
   capital: [
@@ -97,6 +118,51 @@ const financeNav = {
     { label: 'MIS Upload', path: '/finance/mis' },
     { label: 'Reports', path: '/reports' },
   ],
+}
+
+const financeLinkClass = ({ isActive }: { isActive: boolean }) =>
+  `flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] border-l-[3px] ${
+    isActive
+      ? 'bg-brand-soft text-brand font-semibold border-l-brand'
+      : 'text-muted hover:bg-canvas border-l-transparent'
+  }`
+
+function FinanceNavGroup({ entry, onNavigate }: { entry: FinanceNavEntry; onNavigate: () => void }) {
+  const location = useLocation()
+  const onRoute = location.pathname.startsWith(entry.path)
+  const [override, setOverride] = useState<boolean | null>(null)
+  const expanded = override ?? onRoute
+  const panelId = `finance-nav-${entry.path.replace(/\W+/g, '-')}`
+
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        onClick={() => setOverride(!expanded)}
+        className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-[13px] border-l-[3px] border-l-transparent hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+          onRoute ? 'text-brand font-semibold' : 'text-muted'
+        }`}
+      >
+        {entry.label}
+        <ChevronDown
+          className={`w-3.5 h-3.5 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
+          strokeWidth={2}
+          aria-hidden
+        />
+      </button>
+      {expanded ? (
+        <div id={panelId} className="ml-4 mt-0.5 pl-2 border-l border-line space-y-0.5">
+          {entry.children?.map((child) => (
+            <NavLink key={child.path} to={child.path} onClick={onNavigate} className={financeLinkClass}>
+              {child.label}
+            </NavLink>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function getInitials(name: string): string {
@@ -171,23 +237,21 @@ export default function Layout() {
               <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-brand px-[14px] mb-1 opacity-80">
                 {group}
               </p>
-              {financeNav[group].map((item) => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  end={item.path === '/finance'}
-                  onClick={() => setNavOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] border-l-[3px] ${
-                      isActive
-                        ? 'bg-brand-soft text-brand font-semibold border-l-brand'
-                        : 'text-muted hover:bg-canvas border-l-transparent'
-                    }`
-                  }
-                >
-                  {item.label}
-                </NavLink>
-              ))}
+              {financeNav[group].map((item) =>
+                item.children ? (
+                  <FinanceNavGroup key={item.path} entry={item} onNavigate={() => setNavOpen(false)} />
+                ) : (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    end={item.path === '/finance'}
+                    onClick={() => setNavOpen(false)}
+                    className={financeLinkClass}
+                  >
+                    {item.label}
+                  </NavLink>
+                ),
+              )}
             </div>
           ))}
         </nav>
@@ -224,6 +288,9 @@ export default function Layout() {
       )}
 
       <div className="px-3 py-4 border-t border-line space-y-1">
+        <div className="px-1 pb-2 sm:hidden">
+          <WorkspaceChip className="flex w-full" />
+        </div>
         {user && (
           <div className="flex items-center gap-3 px-3 py-2 mb-1">
             <div className="w-8 h-8 rounded-lg bg-brand-soft text-brand text-xs font-semibold flex items-center justify-center shrink-0">
@@ -269,38 +336,41 @@ export default function Layout() {
       ) : null}
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="min-h-14 border-b border-line px-3 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0 bg-surface/90 backdrop-blur-md print:hidden">
-          <div className="flex items-center gap-2 min-w-0">
+        <header className="min-h-14 border-b border-line px-3 sm:px-6 py-2 flex flex-wrap items-center gap-2 shrink-0 bg-surface/90 backdrop-blur-md print:hidden">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <button
               type="button"
-              className="md:hidden p-2 rounded-lg text-muted hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              className="md:hidden p-2.5 rounded-lg text-muted hover:bg-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               aria-label="Open menu"
               onClick={() => setNavOpen(true)}
             >
               <Menu className="w-5 h-5" strokeWidth={2} />
             </button>
             <HomeButton />
+            <WorkspaceChip className="hidden sm:inline-flex" />
           </div>
-          <div className="flex items-center gap-2 min-w-0 max-w-full overflow-x-auto">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <ThemeToggle />
             {hasAccess('users') ? (
               <Link
                 to="/settings"
                 title="Settings"
                 aria-label="Settings"
-                className="w-9 h-9 rounded-xl text-muted hover:text-ink hover:bg-canvas flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand shrink-0"
+                className="w-10 h-10 sm:w-9 sm:h-9 rounded-xl text-muted hover:text-ink hover:bg-canvas flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand shrink-0"
               >
                 <Settings className="w-4 h-4" strokeWidth={2} aria-hidden />
               </Link>
             ) : null}
-            {showDateRange ? (
-              <UniversalCalendar from={from} to={to} onChange={setRange} compact />
-            ) : (
-              <span className="text-xs text-subtle font-mono whitespace-nowrap">
-                {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-              </span>
-            )}
           </div>
+          {showDateRange ? (
+            <div className="order-last w-full sm:order-none sm:w-auto flex justify-end">
+              <UniversalCalendar from={from} to={to} onChange={setRange} compact />
+            </div>
+          ) : (
+            <span className="hidden sm:inline text-xs text-subtle font-mono whitespace-nowrap">
+              {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </span>
+          )}
         </header>
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden bg-transparent print:overflow-visible">

@@ -1,6 +1,32 @@
 from rest_framework import serializers
-from .models import Deal, DealActivity, PoWorkflow
+from .models import Deal, DealActivity, PoDocumentIssue, PoWorkflow
+from .po_constants import PO_ISSUE_REASONS
 from .services.deal_service import set_default_probability
+
+
+class PoDocumentIssueSerializer(serializers.ModelSerializer):
+    opportunity_prospect_number = serializers.CharField(source='opportunity.prospect_number', read_only=True)
+    opportunity_name = serializers.CharField(source='opportunity.name', read_only=True)
+    raised_by_name = serializers.CharField(source='raised_by.name', read_only=True, default=None)
+    resolved_by_name = serializers.CharField(source='resolved_by.name', read_only=True, default=None)
+    reason_labels = serializers.SerializerMethodField()
+    attachments = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PoDocumentIssue
+        fields = [
+            'id', 'opportunity', 'opportunity_prospect_number', 'opportunity_name',
+            'raised_by', 'raised_by_name', 'reasons', 'reason_labels', 'attachments', 'note',
+            'status', 'resolved_by', 'resolved_by_name', 'resolved_at', 'resolution_note',
+            'resolution_activity', 'email_sent_at', 'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_reason_labels(self, obj):
+        return [PO_ISSUE_REASONS.get(code, code) for code in obj.reasons or []]
+
+    def get_attachments(self, obj):
+        return [{'id': str(item.id), 'file_name': item.file_name} for item in obj.attachments.all()]
 
 
 class DealActivitySerializer(serializers.ModelSerializer):
@@ -88,7 +114,7 @@ class PoWorkflowSerializer(serializers.ModelSerializer):
             'id', 'company', 'company_name', 'customer_name', 'customer_name_input',
             'billing_entity', 'service_pillar', 'po_number', 'po_display', 'po_date', 'agreement',
             'start_date', 'end_date', 'expiry', 'total_value', 'value_per_invoice',
-            'billing_cycle', 'billing_due', 'status',
+            'billing_cycle', 'milestone_details', 'billing_due', 'status',
             'finance_approved', 'finance_approved_at', 'finance_purchase_order',
             'opportunity', 'opportunity_prospect_number', 'opportunity_name', 'opportunity_company_name',
             'created_at', 'updated_at',

@@ -25,6 +25,16 @@ from .views import (
     ComplianceItemDetailView,
     MisUploadListCreateView,
     ledger_page_summary,
+    FinanceClientListCreateView,
+    FinanceClientDetailView,
+    FinanceVendorListCreateView,
+    FinanceVendorDetailView,
+    clients_export,
+    clients_template,
+    clients_import,
+    vendors_export,
+    vendors_template,
+    vendors_import,
 )
 
 urlpatterns = [
@@ -53,4 +63,14 @@ urlpatterns = [
     path('compliance/', ComplianceItemListCreateView.as_view(), name='compliance-list'),
     path('compliance/<uuid:pk>/', ComplianceItemDetailView.as_view(), name='compliance-detail'),
     path('mis/', MisUploadListCreateView.as_view(), name='mis-upload-list'),
+    path('clients/', FinanceClientListCreateView.as_view(), name='finance-client-list'),
+    path('clients/export/', clients_export, name='finance-client-export'),
+    path('clients/template/', clients_template, name='finance-client-template'),
+    path('clients/import/', clients_import, name='finance-client-import'),
+    path('clients/<uuid:pk>/', FinanceClientDetailView.as_view(), name='finance-client-detail'),
+    path('vendors/', FinanceVendorListCreateView.as_view(), name='finance-vendor-list'),
+    path('vendors/export/', vendors_export, name='finance-vendor-export'),
+    path('vendors/template/', vendors_template, name='finance-vendor-template'),
+    path('vendors/import/', vendors_import, name='finance-vendor-import'),
+    path('vendors/<uuid:pk>/', FinanceVendorDetailView.as_view(), name='finance-vendor-detail'),
 ]

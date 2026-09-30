@@ -10,7 +10,7 @@ export default function HomeButton() {
     <button
       type="button"
       onClick={() => navigate('/')}
-      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
+      className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 sm:py-1.5 rounded-full text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
         atHome ? 'bg-brand-soft text-brand' : 'text-muted hover:text-ink hover:bg-canvas'
       }`}
     >

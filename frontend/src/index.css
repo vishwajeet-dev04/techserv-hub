@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Follow the in-app theme toggle (html.dark), not the OS colour scheme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-ink: #1a1a1a;
   --color-muted: #6e6e73;
@@ -13,6 +16,20 @@
   --color-pulse-sidebar: #1c1c1e;
   --color-pulse-sidebar-hover: #2c2c2e;
   --color-danger: #dc2626;
+  --color-danger-soft: #fef2f2;
+  --color-success: #047857;
+  --color-success-soft: #ecfdf5;
+  --color-warning: #b45309;
+  --color-warning-soft: #fffbeb;
+  --color-info: #0369a1;
+  --color-info-soft: #f0f9ff;
+  --color-chart-1: #7c3aed;
+  --color-chart-2: #059669;
+  --color-chart-3: #f59e0b;
+  --color-chart-4: #2563eb;
+  --color-chart-5: #db2777;
+  --color-chart-6: #0d9488;
+  --color-chart-7: #ea580c;
 }
 
 html {
@@ -33,6 +50,20 @@ html.dark {
   --color-pulse-sidebar: #141416;
   --color-pulse-sidebar-hover: #2c2c2e;
   --color-danger: #f87171;
+  --color-danger-soft: rgb(127 29 29 / 0.28);
+  --color-success: #34d399;
+  --color-success-soft: rgb(6 78 59 / 0.35);
+  --color-warning: #fbbf24;
+  --color-warning-soft: rgb(120 53 15 / 0.35);
+  --color-info: #38bdf8;
+  --color-info-soft: rgb(12 74 110 / 0.35);
+  --color-chart-1: #a78bfa;
+  --color-chart-2: #34d399;
+  --color-chart-3: #fbbf24;
+  --color-chart-4: #60a5fa;
+  --color-chart-5: #f472b6;
+  --color-chart-6: #2dd4bf;
+  --color-chart-7: #fb923c;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -172,6 +203,23 @@ html.dark .app-atmosphere {
 html.dark .app-atmosphere::after {
   opacity: 0.22;
   mix-blend-mode: overlay;
+}
+
+/* Keep the first column visible while a wide table scrolls sideways on small screens. */
+@media (max-width: 767px) {
+  .table-pin-first th:first-child,
+  .table-pin-first td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background-color: var(--color-surface);
+    box-shadow: 1px 0 0 var(--color-line);
+  }
+
+  .table-pin-first thead th:first-child {
+    z-index: 2;
+    background-color: var(--color-canvas);
+  }
 }
 
 .panel {

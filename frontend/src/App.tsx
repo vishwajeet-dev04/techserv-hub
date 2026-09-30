@@ -9,11 +9,11 @@ import Layout from './components/Layout'
 import HubShell from './components/HubShell'
 import SettingsLayout from './components/SettingsLayout'
 import RoleProtectedRoute from './components/RoleProtectedRoute'
+import WorkspaceGuard from './components/WorkspaceGuard'
 import PageLoading from './components/PageLoading'
 import {
   CapitalPage,
   CashflowPage,
-  FinanceClientsPage,
   InvoicesPage,
   PayablesPage,
   PurchaseOrdersPage,
@@ -21,6 +21,8 @@ import {
 import type { UserRole } from './types'
 
 const Hub = lazy(() => import('./pages/Hub'))
+const SelectCompany = lazy(() => import('./pages/SelectCompany'))
+const SelectRegion = lazy(() => import('./pages/SelectRegion'))
 const ExecutiveSummary = lazy(() => import('./pages/ExecutiveSummary'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const OpsPipeline = lazy(() => import('./pages/OpsPipeline'))
@@ -33,6 +35,12 @@ const Finance = lazy(() => import('./pages/Finance'))
 const FinanceBooks = lazy(() => import('./pages/FinanceBooks'))
 const FinanceMis = lazy(() => import('./pages/FinanceMis'))
 const FinanceCompliance = lazy(() => import('./pages/FinanceCompliance'))
+const ClientsMasterPage = lazy(() =>
+  import('./pages/FinanceMasterData').then((m) => ({ default: m.ClientsMasterPage })),
+)
+const VendorsMasterPage = lazy(() =>
+  import('./pages/FinanceMasterData').then((m) => ({ default: m.VendorsMasterPage })),
+)
 const Reports = lazy(() => import('./pages/Reports'))
 const Users = lazy(() => import('./pages/Users'))
 const Login = lazy(() => import('./pages/Login'))
@@ -81,31 +89,37 @@ export default function App() {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<Hub />} />
-              <Route
-                path="summary"
-                element={
-                  <RoleProtectedRoute allowedRoles={ALL_ROLES}>
-                    <ExecutiveSummary />
-                  </RoleProtectedRoute>
-                }
-              />
-              <Route
-                path="settings"
-                element={
-                  <RoleProtectedRoute allowedRoles={['ADMIN']}>
-                    <SettingsLayout />
-                  </RoleProtectedRoute>
-                }
-              >
-                <Route index element={<Navigate to="users" replace />} />
-                <Route path="users" element={<Users />} />
+              <Route path="select-company" element={<SelectCompany />} />
+              <Route path="select-company/:company" element={<SelectRegion />} />
+              <Route element={<WorkspaceGuard />}>
+                <Route index element={<Hub />} />
+                <Route
+                  path="summary"
+                  element={
+                    <RoleProtectedRoute allowedRoles={ALL_ROLES}>
+                      <ExecutiveSummary />
+                    </RoleProtectedRoute>
+                  }
+                />
+                <Route
+                  path="settings"
+                  element={
+                    <RoleProtectedRoute allowedRoles={['ADMIN']}>
+                      <SettingsLayout />
+                    </RoleProtectedRoute>
+                  }
+                >
+                  <Route index element={<Navigate to="users" replace />} />
+                  <Route path="users" element={<Users />} />
+                </Route>
               </Route>
             </Route>
             <Route
               element={
                 <ProtectedRoute>
-                  <Layout />
+                  <WorkspaceGuard>
+                    <Layout />
+                  </WorkspaceGuard>
                 </ProtectedRoute>
               }
             >
@@ -175,19 +189,38 @@ export default function App() {
                 </RoleProtectedRoute>
               }
             />
+            <Route path="finance/cashflow" element={<Navigate to="/finance/cashflow/current" replace />} />
             <Route
-              path="finance/cashflow"
+              path="finance/cashflow/current"
               element={
                 <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
-                  <CashflowPage />
+                  <CashflowPage key="CURRENT" account="CURRENT" />
                 </RoleProtectedRoute>
               }
             />
             <Route
-              path="finance/clients"
+              path="finance/cashflow/seed"
               element={
                 <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
-                  <FinanceClientsPage />
+                  <CashflowPage key="SEED" account="SEED" />
+                </RoleProtectedRoute>
+              }
+            />
+            <Route path="finance/clients" element={<Navigate to="/finance/master-data/clients" replace />} />
+            <Route path="finance/master-data" element={<Navigate to="/finance/master-data/clients" replace />} />
+            <Route
+              path="finance/master-data/clients"
+              element={
+                <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
+                  <ClientsMasterPage />
+                </RoleProtectedRoute>
+              }
+            />
+            <Route
+              path="finance/master-data/vendors"
+              element={
+                <RoleProtectedRoute allowedRoles={FINANCE_ROLES}>
+                  <VendorsMasterPage />
                 </RoleProtectedRoute>
               }
             />
@@ -246,9 +279,11 @@ export default function App() {
             path="pulse"
             element={
               <ProtectedRoute>
-                <RoleProtectedRoute allowedRoles={CRM_ROLES}>
-                  <PulseLayout />
-                </RoleProtectedRoute>
+                <WorkspaceGuard>
+                  <RoleProtectedRoute allowedRoles={CRM_ROLES}>
+                    <PulseLayout />
+                  </RoleProtectedRoute>
+                </WorkspaceGuard>
               </ProtectedRoute>
             }
           >
@@ -257,6 +292,10 @@ export default function App() {
             <Route path="opportunities" element={<PulseOpportunities />} />
             <Route path="reminders" element={<PulseReminders />} />
             <Route path="team" element={<OpsTeam />} />
+            <Route path="summary" element={<Dashboard />} />
+            <Route path="pipeline" element={<OpsPipeline />} />
+            <Route path="po-contracts" element={<Deals />} />
+            <Route path="po-contracts/:id" element={<DealDetail />} />
             <Route path="settings" element={<Navigate to="/pulse/contacts" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

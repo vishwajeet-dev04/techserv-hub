@@ -9,6 +9,7 @@ from django.db.models import Count, Q, Sum
 
 from apps.business.models import Company
 from apps.finance.models import (
+    CashflowAccount,
     CashflowDirection,
     CashflowEntry,
     Invoice,
@@ -31,55 +32,59 @@ def _date_filtered(qs, date_field: str, date_from: str | None, date_to: str | No
     return qs
 
 
-def cashflow_summary(date_from: str | None = None, date_to: str | None = None) -> dict:
-    qs = _date_filtered(CashflowEntry.objects.all(), 'entry_date', date_from, date_to)
-    by_category: dict[str, dict] = defaultdict(lambda: {'category': '', 'inflow': 0.0, 'outflow': 0.0, 'net': 0.0})
-    total_in = Decimal('0')
-    total_out = Decimal('0')
-    for row in qs:
+def cashflow_summary(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    account: str = CashflowAccount.CURRENT,
+) -> dict:
+    """Category totals per direction; the Opening balance row is a balance, not a flow, so it is excluded."""
+    qs = _date_filtered(CashflowEntry.objects.filter(account=account), 'entry_date', date_from, date_to)
+    qs = qs.exclude(Q(sub_category__iexact='Opening') | Q(category__iexact='Opening Balance'))
+    inflow_by: dict[str, Decimal] = defaultdict(Decimal)
+    outflow_by: dict[str, Decimal] = defaultdict(Decimal)
+    for row in qs.only('category', 'direction', 'amount'):
         key = row.category or 'Others'
-        bucket = by_category[key]
-        bucket['category'] = key
         if row.direction == CashflowDirection.INFLOW:
-            bucket['inflow'] += float(row.amount)
-            total_in += row.amount
+            inflow_by[key] += row.amount
         else:
-            bucket['outflow'] += float(row.amount)
-            total_out += row.amount
+            outflow_by[key] += row.amount
+
+    def _cards(totals: dict[str, Decimal], direction: str) -> list[dict]:
+        cards = [
+            {'category': key, 'amount': _money(value), 'direction': direction}
+            for key, value in totals.items()
+            if value
+        ]
+        cards.sort(key=lambda card: (-card['amount'], card['category']))
+        return cards
+
+    total_in = sum(inflow_by.values(), Decimal('0'))
+    total_out = sum(outflow_by.values(), Decimal('0'))
     categories = []
-    for item in by_category.values():
-        item['net'] = item['inflow'] - item['outflow']
-        item['direction'] = 'Inflow' if item['inflow'] >= item['outflow'] else 'Outflow'
-        if item['inflow'] and not item['outflow']:
-            item['direction'] = 'Inflow'
-            item['amount'] = item['inflow']
-        elif item['outflow'] and not item['inflow']:
-            item['direction'] = 'Outflow'
-            item['amount'] = item['outflow']
-        else:
-            item['amount'] = abs(item['net'])
-            item['direction'] = 'Net' if item['net'] else 'Net'
-        categories.append(item)
-    categories.sort(key=lambda row: -row['amount'])
-    net = total_in - total_out
+    for key in sorted(set(inflow_by) | set(outflow_by)):
+        inflow = inflow_by.get(key, Decimal('0'))
+        outflow = outflow_by.get(key, Decimal('0'))
+        categories.append({
+            'category': key,
+            'inflow': _money(inflow),
+            'outflow': _money(outflow),
+            'net': _money(inflow - outflow),
+        })
+    categories.sort(key=lambda row: -(row['inflow'] + row['outflow']))
     return {
+        'account': account,
+        'has_entries': CashflowEntry.objects.filter(account=account).exists(),
         'total_inflow': _money(total_in),
         'total_outflow': _money(total_out),
-        'net': _money(net),
+        'net': _money(total_in - total_out),
         'by_category': categories,
-        'cards': categories + [{
-            'category': 'TOTAL (Net)',
-            'amount': _money(net),
-            'direction': 'Net',
-            'inflow': _money(total_in),
-            'outflow': _money(total_out),
-            'net': _money(net),
-        }],
+        'inflow_cards': _cards(inflow_by, 'Inflow'),
+        'outflow_cards': _cards(outflow_by, 'Outflow'),
     }
 
 
 def payables_summary(date_from: str | None = None, date_to: str | None = None) -> dict:
-    qs = _date_filtered(Payable.objects.all(), 'due_date', date_from, date_to)
+    qs = _date_filtered(Payable.objects.all(), 'invoice_date', date_from, date_to)
     total = qs.aggregate(total=Sum('payable_amount'))['total'] or Decimal('0')
     paid_qs = qs.filter(status=PayableStatus.PAID)
     pending_qs = qs.filter(status=PayableStatus.PENDING)

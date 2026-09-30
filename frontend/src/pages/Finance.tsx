@@ -19,6 +19,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Legend,
   Line,
   LineChart,
@@ -33,6 +34,7 @@ import { financeApi } from '../api/finance'
 import { btnSecondaryClass } from '../components/Modal'
 import { useDateRange } from '../hooks/useDateRange'
 import { formatRangeLabel } from '../lib/dateRange'
+import { chartCursor, tooltipProps } from '../lib/chartTheme'
 import type { BankPosition, OpsDashboardSeries, OpsInvoiceRow, OpsSummary } from '../types'
 
 const fmt = (n: number) =>
@@ -50,16 +52,23 @@ const fmtCompact = (n: number) => {
 }
 
 const CHART_COLORS = {
-  brand: '#7c3aed',
-  amber: '#f59e0b',
-  teal: '#14b8a6',
-  red: '#ef4444',
-  blue: '#3b82f6',
-  soft: '#a78bfa',
+  brand: 'var(--color-chart-1)',
+  amber: 'var(--color-chart-3)',
+  teal: 'var(--color-chart-6)',
+  red: 'var(--color-danger)',
+  blue: 'var(--color-chart-4)',
+  soft: 'var(--color-chart-5)',
 }
 
-const AGING_COLORS = [CHART_COLORS.brand, CHART_COLORS.amber, CHART_COLORS.teal, CHART_COLORS.blue, CHART_COLORS.soft]
-const DONUT_COLORS = [CHART_COLORS.brand, CHART_COLORS.amber, CHART_COLORS.teal, CHART_COLORS.blue, CHART_COLORS.soft, '#ec4899']
+/** Ordered 0-7 → 90+ days: fresh receivables green, oldest red. */
+const AGING_COLORS = [
+  'var(--color-success)',
+  CHART_COLORS.amber,
+  'var(--color-chart-7)',
+  CHART_COLORS.soft,
+  CHART_COLORS.red,
+]
+const DONUT_COLORS = [CHART_COLORS.brand, CHART_COLORS.amber, CHART_COLORS.teal, CHART_COLORS.blue, CHART_COLORS.soft, 'var(--color-chart-7)']
 
 type CashMode = 'combined' | 'revenue' | 'capital'
 
@@ -167,11 +176,11 @@ function BankRow({
 }) {
   const valueClass =
     tone === 'out'
-      ? 'text-red-500'
+      ? 'text-danger'
       : tone === 'warn'
-        ? 'text-amber-600'
+        ? 'text-warning'
         : tone === 'in'
-          ? 'text-emerald-600'
+          ? 'text-success'
           : 'text-ink'
   const display =
     pending || value === null || value === undefined ? (pending ? 'Awaiting Seed book' : '—') : fmtCompact(value)
@@ -242,7 +251,7 @@ export default function Finance() {
 
   if (summary.isLoading) {
     return (
-      <div className="p-6 max-w-[1400px] mx-auto space-y-4">
+      <div className="p-4 sm:p-6 max-w-[1400px] mx-auto space-y-4">
         <div className="h-8 w-64 bg-canvas rounded-xl animate-pulse" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -399,7 +408,7 @@ export default function Finance() {
 
             <div>
               <p className="text-sm font-semibold text-ink">Overdue (&gt; 30 days)</p>
-              <p className="text-lg font-semibold text-red-600 mt-1 tabular-nums">{fmt(rec.overdue)}</p>
+              <p className="text-lg font-semibold text-danger mt-1 tabular-nums">{fmt(rec.overdue)}</p>
               <button
                 type="button"
                 className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-ink"
@@ -449,17 +458,17 @@ export default function Finance() {
             <div className="flex items-center gap-3 text-xs">
               <span>
                 Inflow{' '}
-                <span className="font-semibold text-emerald-700 tabular-nums">{fmt(cashMetrics.inflow)}</span>
+                <span className="font-semibold text-success tabular-nums">{fmt(cashMetrics.inflow)}</span>
               </span>
               <span>
                 Outflow{' '}
-                <span className="font-semibold text-red-600 tabular-nums">{fmt(cashMetrics.outflow)}</span>
+                <span className="font-semibold text-danger tabular-nums">{fmt(cashMetrics.outflow)}</span>
               </span>
               <span>
                 Net{' '}
                 <span
                   className={`font-semibold tabular-nums ${
-                    cashMetrics.net >= 0 ? 'text-emerald-700' : 'text-red-600'
+                    cashMetrics.net >= 0 ? 'text-success' : 'text-danger'
                   }`}
                 >
                   {fmt(cashMetrics.net)}
@@ -492,14 +501,14 @@ export default function Finance() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="bg-surface border border-brand/30 rounded-2xl p-5 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">Total Inflow</p>
-            <p className="text-2xl font-semibold text-emerald-700 mt-2 tabular-nums inline-flex items-center gap-1.5">
+            <p className="text-2xl font-semibold text-success mt-2 tabular-nums inline-flex items-center gap-1.5">
               {fmt(cashMetrics.inflow)}
               <ArrowUpRight className="w-4 h-4" strokeWidth={2} aria-hidden />
             </p>
           </div>
           <div className="bg-surface/80 backdrop-blur-md border border-line rounded-2xl p-5 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">Total Outflow</p>
-            <p className="text-2xl font-semibold text-red-600 mt-2 tabular-nums inline-flex items-center gap-1.5">
+            <p className="text-2xl font-semibold text-danger mt-2 tabular-nums inline-flex items-center gap-1.5">
               {fmt(cashMetrics.outflow)}
               <ArrowDownRight className="w-4 h-4" strokeWidth={2} aria-hidden />
             </p>
@@ -508,7 +517,7 @@ export default function Finance() {
             <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">Net Cash Movement</p>
             <p
               className={`text-2xl font-semibold mt-2 tabular-nums inline-flex items-center gap-1.5 ${
-                cashMetrics.net >= 0 ? 'text-emerald-700' : 'text-red-600'
+                cashMetrics.net >= 0 ? 'text-success' : 'text-danger'
               }`}
             >
               {fmt(cashMetrics.net)}
@@ -554,7 +563,7 @@ export default function Finance() {
         {bankOpen ? (
           <>
             {bankPosition.isLoading ? (
-              <div className="p-6 text-sm text-muted">Loading bank position…</div>
+              <div className="p-4 sm:p-6 text-sm text-muted">Loading bank position…</div>
             ) : bankPosition.isError ? (
               <div className="p-6">
                 <p className="text-sm text-subtle">Could not load bank position.</p>
@@ -626,7 +635,7 @@ export default function Finance() {
                       <span className="text-sm font-semibold text-ink">Closing Balance</span>
                       <span
                         className={`text-sm font-semibold tabular-nums ${
-                          (bank?.operational.closing ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-500'
+                          (bank?.operational.closing ?? 0) >= 0 ? 'text-success' : 'text-danger'
                         }`}
                       >
                         {bank?.operational.available ? fmtCompact(bank.operational.closing ?? 0) : '—'}
@@ -681,7 +690,7 @@ export default function Finance() {
                   tickFormatter={(v) => fmtCompact(Number(v))}
                   width={56}
                 />
-                <Tooltip formatter={(value) => fmt(Number(value ?? 0))} />
+                <Tooltip {...tooltipProps} formatter={(value) => fmt(Number(value ?? 0))} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="billed" name="Billed" fill={CHART_COLORS.brand} radius={[4, 4, 0, 0]} />
                 <Bar dataKey="received" name="Received" fill={CHART_COLORS.amber} radius={[4, 4, 0, 0]} />
@@ -691,7 +700,7 @@ export default function Finance() {
 
           <ChartCard
             title="Inflow by Category"
-            linkTo="/finance/cashflow"
+            linkTo="/finance/cashflow/current"
             empty={!donutData.length}
           >
             <ResponsiveContainer width="100%" height={220}>
@@ -708,7 +717,7 @@ export default function Finance() {
                     <Cell key={donutData[i].category} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => fmt(Number(value ?? 0))} />
+                <Tooltip {...tooltipProps} formatter={(value) => fmt(Number(value ?? 0))} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
               </PieChart>
             </ResponsiveContainer>
@@ -716,7 +725,7 @@ export default function Finance() {
 
           <ChartCard
             title="Cash Inflow vs Outflow"
-            linkTo="/finance/cashflow"
+            linkTo="/finance/cashflow/current"
             empty={!charts || charts.cash_in_out.every((r) => !r.inflow && !r.outflow)}
           >
             <ResponsiveContainer width="100%" height={220}>
@@ -730,7 +739,7 @@ export default function Finance() {
                   tickFormatter={(v) => fmtCompact(Number(v))}
                   width={56}
                 />
-                <Tooltip formatter={(value) => fmt(Number(value ?? 0))} />
+                <Tooltip {...tooltipProps} formatter={(value) => fmt(Number(value ?? 0))} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="inflow" name="Inflow" fill={CHART_COLORS.teal} radius={[4, 4, 0, 0]} />
                 <Bar dataKey="outflow" name="Outflow" fill={CHART_COLORS.red} radius={[4, 4, 0, 0]} />
@@ -744,38 +753,48 @@ export default function Finance() {
             empty={!agingData.some((r) => r.amount > 0)}
           >
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={agingData} layout="vertical" margin={{ left: 16 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" horizontal={false} />
+              <BarChart data={agingData} margin={{ top: 22, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" vertical={false} />
                 <XAxis
-                  type="number"
+                  dataKey="bucket"
+                  tick={{ fontSize: 11, fill: 'var(--color-muted)' }}
+                  tickFormatter={(v) => `${v} d`}
+                  axisLine={{ stroke: 'var(--color-line)' }}
+                  tickLine={false}
+                />
+                <YAxis
                   tick={{ fontSize: 10, fill: 'var(--color-subtle)' }}
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={(v) => fmtCompact(Number(v))}
+                  width={64}
                 />
-                <YAxis
-                  type="category"
-                  dataKey="bucket"
-                  tick={{ fontSize: 11, fill: '#6e6e73' }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={48}
+                <Tooltip
+                  {...tooltipProps}
+                  cursor={chartCursor}
+                  labelFormatter={(label) => `${label} days`}
+                  formatter={(value) => fmt(Number(value ?? 0))}
                 />
-                <Tooltip formatter={(value) => fmt(Number(value ?? 0))} />
-                <Bar dataKey="amount" name="Outstanding" radius={[0, 4, 4, 0]}>
+                <Bar dataKey="amount" name="Outstanding" radius={[6, 6, 0, 0]} maxBarSize={48}>
                   {agingData.map((row, i) => (
                     <Cell key={row.bucket} fill={AGING_COLORS[i % AGING_COLORS.length]} />
                   ))}
+                  <LabelList
+                    dataKey="amount"
+                    position="top"
+                    formatter={(v) => (Number(v) > 0 ? fmtCompact(Number(v)) : '')}
+                    style={{ fontSize: 10, fontWeight: 600, fill: 'var(--color-ink)' }}
+                  />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
-          <ChartCard title="Net Cash Position" linkTo="/finance/cashflow">
+          <ChartCard title="Net Cash Position" linkTo="/finance/cashflow/current">
             <div className="h-full flex flex-col">
               <p
                 className={`text-3xl font-semibold tabular-nums ${
-                  cashMetrics.net >= 0 ? 'text-teal-600' : 'text-red-600'
+                  cashMetrics.net >= 0 ? 'text-success' : 'text-danger'
                 }`}
               >
                 {fmt(cashMetrics.net)}
@@ -788,7 +807,7 @@ export default function Finance() {
                   <ResponsiveContainer width="100%" height={120}>
                     <BarChart data={netBars}>
                       <XAxis dataKey="label" tick={{ fontSize: 9, fill: 'var(--color-subtle)' }} axisLine={false} tickLine={false} />
-                      <Tooltip formatter={(value) => fmt(Number(value ?? 0))} />
+                      <Tooltip {...tooltipProps} formatter={(value) => fmt(Number(value ?? 0))} />
                       <Bar dataKey="positive" name="Surplus" stackId="net" fill={CHART_COLORS.teal} />
                       <Bar dataKey="negative" name="Deficit" stackId="net" fill={CHART_COLORS.red} />
                     </BarChart>
@@ -814,7 +833,7 @@ export default function Finance() {
                   tickFormatter={(v) => fmtCompact(Number(v))}
                   width={56}
                 />
-                <Tooltip formatter={(value) => fmt(Number(value ?? 0))} />
+                <Tooltip {...tooltipProps} formatter={(value) => fmt(Number(value ?? 0))} />
                 <Line
                   type="monotone"
                   dataKey="amount"

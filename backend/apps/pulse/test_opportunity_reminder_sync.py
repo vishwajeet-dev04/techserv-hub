@@ -73,7 +73,7 @@ class OpportunityDateReminderSyncTests(TestCase):
         pulse_service._sync_opportunity_date_reminders(opp)
         first = Reminder.objects.get(opportunity=opp, reminder_type=ReminderType.FOLLOW_UP, status=ReminderStatus.PENDING)
         new_due = date.today() + timedelta(days=10)
-        pulse_service.update_opportunity(opp, follow_up_date=new_due)
+        pulse_service.update_opportunity(opp, follow_up_date=new_due, stage_change_note='Client asked for next week')
         self.assertEqual(
             Reminder.objects.filter(opportunity=opp, reminder_type=ReminderType.FOLLOW_UP, status=ReminderStatus.PENDING).count(),
             1,
@@ -84,7 +84,7 @@ class OpportunityDateReminderSyncTests(TestCase):
     def test_clearing_follow_up_marks_pending_done(self):
         opp = self._opp(follow_up_date=date.today() + timedelta(days=3))
         pulse_service._sync_opportunity_date_reminders(opp)
-        pulse_service.update_opportunity(opp, follow_up_date=None)
+        pulse_service.update_opportunity(opp, follow_up_date=None, stage_change_note='No follow-up needed')
         rem = Reminder.objects.get(opportunity=opp, reminder_type=ReminderType.FOLLOW_UP)
         self.assertEqual(rem.status, ReminderStatus.DONE)
 

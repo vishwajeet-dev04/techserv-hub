@@ -410,9 +410,17 @@ class MisImportParserTests(APITestCase):
         self.client.force_authenticate(self.finance_user)
         summary = self.client.get('/api/v1/finance/ledger/summary/', {'page': 'cashflow'})
         self.assertEqual(summary.status_code, status.HTTP_200_OK)
-        card_names = {row['category'] for row in summary.data.get('cards', [])}
-        self.assertIn('Salaries', card_names)
-        self.assertIn('TOTAL (Net)', card_names)
+        inflow_cards = summary.data['inflow_cards']
+        outflow_cards = summary.data['outflow_cards']
+        card_names = {row['category'] for row in inflow_cards + outflow_cards}
+        self.assertIn('Salaries', {row['category'] for row in outflow_cards})
+        self.assertNotIn('TOTAL (Net)', card_names)
+        self.assertNotIn('Opening Balance', card_names)
+        self.assertTrue(all(row['direction'] == 'Inflow' for row in inflow_cards))
+        self.assertTrue(all(row['direction'] == 'Outflow' for row in outflow_cards))
+        for cards in (inflow_cards, outflow_cards):
+            amounts = [row['amount'] for row in cards]
+            self.assertEqual(amounts, sorted(amounts, reverse=True))
         # Party names must not appear as category card labels
         self.assertFalse(any('tarun' in name.lower() for name in card_names))
         self.assertFalse(any('savex' in name.lower() for name in card_names))
@@ -458,3 +466,236 @@ class MisImportParserTests(APITestCase):
                 places=2,
             )
             self.assertAlmostEqual(response.data['internal_transfer'], ops['transfer_in'], places=2)
+
+    def test_seed_bank_book_sheet_imports_into_seed_account(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        from apps.finance.mis_import import import_mis_workbook
+        from apps.finance.models import CashflowAccount, CashflowEntry
+
+        workbook = load_workbook(SAMPLE_MIS)
+        bank_name = next(name for name in workbook.sheetnames if name.lower() == 'bank book')
+        seed_sheet = workbook.copy_worksheet(workbook[bank_name])
+        seed_sheet.title = 'Seed Bank book'
+        buffer = BytesIO()
+        workbook.save(buffer)
+
+        result = import_mis_workbook(buffer.getvalue())
+        self.assertEqual(result['errors'], [])
+        current = CashflowEntry.objects.filter(account=CashflowAccount.CURRENT).count()
+        seed = CashflowEntry.objects.filter(account=CashflowAccount.SEED).count()
+        self.assertEqual(current, 22)
+        self.assertEqual(seed, 22)
+
+        again = import_mis_workbook(buffer.getvalue())
+        self.assertEqual(again['cashflow']['created'], 0)
+        self.assertEqual(CashflowEntry.objects.count(), 44)
+
+        self.client.force_authenticate(self.finance_user)
+        seed_list = self.client.get('/api/v1/finance/cashflow/', {'account': 'SEED', 'page_size': 5})
+        self.assertEqual(seed_list.status_code, status.HTTP_200_OK)
+        self.assertEqual(seed_list.data['count'], 22)
+        self.assertEqual(len(seed_list.data['results']), 5)
+        self.assertTrue(all(row['account'] == 'SEED' for row in seed_list.data['results']))
+        default_list = self.client.get('/api/v1/finance/cashflow/')
+        self.assertTrue(all(row['account'] == 'CURRENT' for row in default_list.data['results']))
+
+        seed_summary = self.client.get('/api/v1/finance/ledger/summary/', {'page': 'cashflow', 'account': 'SEED'})
+        self.assertTrue(seed_summary.data['has_entries'])
+        self.assertEqual(seed_summary.data['account'], 'SEED')
+        position = self.client.get('/api/v1/finance/bank-position/', {'account': 'SEED'})
+        self.assertTrue(position.data['seed']['available'])
+        self.assertEqual(position.data['seed']['status'], 'available')
+        self.assertEqual(position.data['combined_scope'], 'seed')
+
+    def test_seed_account_empty_without_sheet(self):
+        from apps.finance.mis_import import import_mis_path
+
+        import_mis_path(SAMPLE_MIS)
+        self.client.force_authenticate(self.finance_user)
+        summary = self.client.get('/api/v1/finance/ledger/summary/', {'page': 'cashflow', 'account': 'SEED'})
+        self.assertFalse(summary.data['has_entries'])
+        self.assertEqual(summary.data['inflow_cards'], [])
+        self.assertEqual(summary.data['outflow_cards'], [])
+
+
+class MasterDataAPITests(APITestCase):
+    def setUp(self):
+        from apps.finance.models import FinanceClient, FinanceVendor
+
+        FinanceClient.objects.all().delete()
+        FinanceVendor.objects.all().delete()
+        self.finance_user = User.objects.create_user(
+            email='md-finance@test.com',
+            name='MD Finance',
+            password='pass12345',
+            role=UserRole.FINANCE,
+        )
+        self.viewer = User.objects.create_user(
+            email='md-viewer@test.com',
+            name='MD Viewer',
+            password='pass12345',
+            role=UserRole.VIEWER,
+        )
+        self.client.force_authenticate(self.finance_user)
+
+    def _upload(self, url, content, name='data.xlsx'):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        upload = SimpleUploadedFile(
+            name,
+            content,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        return self.client.post(url, {'file': upload}, format='multipart')
+
+    def test_client_crud_and_pan_autofill(self):
+        response = self.client.post(
+            '/api/v1/finance/clients/',
+            {
+                'name': '  Acme   Corp ',
+                'service_line': 'Managed Services',
+                'email': 'ap@acme.in',
+                'mobile': '+91 98765 43210',
+                'gstin': '29abcde1234f1z5',
+                'msme_registered': True,
+                'msme_number': 'udyam-kr-01-0000001',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['name'], 'Acme Corp')
+        self.assertEqual(response.data['gstin'], '29ABCDE1234F1Z5')
+        self.assertEqual(response.data['pan'], 'ABCDE1234F')
+        self.assertEqual(response.data['mobile'], '+919876543210')
+        client_id = response.data['id']
+
+        response = self.client.patch(
+            f'/api/v1/finance/clients/{client_id}/', {'is_active': False}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertFalse(response.data['is_active'])
+
+        response = self.client.get('/api/v1/finance/clients/', {'active': 'true'})
+        self.assertEqual(response.data['count'], 0)
+        response = self.client.get('/api/v1/finance/clients/', {'search': 'acme'})
+        self.assertEqual(response.data['count'], 1)
+
+        response = self.client.delete(f'/api/v1/finance/clients/{client_id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_client_validation(self):
+        self.client.post('/api/v1/finance/clients/', {'name': 'Acme'}, format='json')
+        response = self.client.post(
+            '/api/v1/finance/clients/',
+            {'name': 'ACME', 'pan': 'BAD', 'gstin': '123', 'mobile': '12345', 'email': 'nope'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        details = response.data.get('details') or response.data
+        for field in ('name', 'pan', 'gstin', 'mobile', 'email'):
+            self.assertIn(field, details)
+
+    def test_vendor_tds_section_required(self):
+        response = self.client.post(
+            '/api/v1/finance/vendors/',
+            {'name': 'Landlord LLP', 'tds_applicable': True},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        details = response.data.get('details') or response.data
+        self.assertIn('tds_section', details)
+
+        response = self.client.post(
+            '/api/v1/finance/vendors/',
+            {'name': 'Landlord LLP', 'tds_applicable': True, 'tds_section': '194i', 'tds_rate': '10'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['tds_section'], '194I')
+
+    def test_list_rows_include_ledger_stats(self):
+        from apps.finance.models import FinanceClient, FinanceVendor, Invoice, Payable, PayableStatus
+
+        FinanceClient.objects.create(name='Loose Customer')
+        Invoice.objects.create(
+            invoice_number='INV-1', customer_name='loose customer', amount=Decimal('1000'),
+            amount_received=Decimal('400'), invoice_date=date(2026, 8, 1),
+        )
+        FinanceVendor.objects.create(name='Rent Co')
+        Payable.objects.create(vendor='Rent Co', total_amount=500, payable_amount=500)
+        Payable.objects.create(
+            vendor='rent co', total_amount=300, payable_amount=300, status=PayableStatus.PAID,
+        )
+
+        row = self.client.get('/api/v1/finance/clients/').data['results'][0]
+        self.assertEqual(row['total_invoiced'], 1000.0)
+        self.assertEqual(row['total_paid'], 400.0)
+        row = self.client.get('/api/v1/finance/vendors/').data['results'][0]
+        self.assertEqual(row['total_payable'], 800.0)
+        self.assertEqual(row['outstanding'], 500.0)
+
+    def test_viewer_is_read_only(self):
+        self.client.force_authenticate(self.viewer)
+        response = self.client.get('/api/v1/finance/vendors/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        response = self.client.post('/api/v1/finance/vendors/', {'name': 'X'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        from apps.finance.master_excel import vendor_template_xlsx
+
+        response = self._upload('/api/v1/finance/vendors/import/', vendor_template_xlsx())
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_vendor_import_updates_by_name(self):
+        from io import BytesIO
+
+        from openpyxl import Workbook
+
+        from apps.finance.models import FinanceVendor
+
+        FinanceVendor.objects.create(name='Rent Co', mobile='9000000000')
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(['Vendor Name', 'Mobile', 'PAN', 'MSME', 'TDS Applicable', 'TDS Section', 'TDS Rate (%)'])
+        sheet.append(['rent co', 9111111111, 'aaafr1234k', 'Yes', 'Yes', '194I', 10])
+        sheet.append(['New Vendor', '', '', 'No', 'No', '', ''])
+        sheet.append(['Broken Vendor', '', 'BAD', 'No', 'No', '', ''])
+        buffer = BytesIO()
+        workbook.save(buffer)
+
+        response = self._upload('/api/v1/finance/vendors/import/', buffer.getvalue())
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['created'], 1)
+        self.assertEqual(response.data['updated'], 1)
+        self.assertEqual(len(response.data['errors']), 1)
+        self.assertEqual(response.data['errors'][0]['row'], 4)
+        vendor = FinanceVendor.objects.get(name='Rent Co')
+        self.assertEqual(vendor.mobile, '9111111111')
+        self.assertEqual(vendor.pan, 'AAAFR1234K')
+        self.assertTrue(vendor.msme_registered)
+        self.assertTrue(vendor.tds_applicable)
+        self.assertEqual(vendor.tds_rate, Decimal('10'))
+        self.assertEqual(FinanceVendor.objects.count(), 2)
+
+    def test_client_export_round_trip(self):
+        from apps.finance.models import FinanceClient
+
+        FinanceClient.objects.create(
+            name='Round Trip Ltd', gstin='29ABCDE1234F1Z5', pan='ABCDE1234F', msme_registered=True,
+            payment_terms_days=45,
+        )
+        response = self.client.get('/api/v1/finance/clients/export/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        content = b''.join(response.streaming_content) if response.streaming else response.content
+
+        response = self.client.get('/api/v1/finance/clients/template/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        response = self._upload('/api/v1/finance/clients/import/', content)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data, {'created': 0, 'updated': 1, 'errors': []})
+        client = FinanceClient.objects.get(name='Round Trip Ltd')
+        self.assertTrue(client.msme_registered)
+        self.assertEqual(client.payment_terms_days, 45)

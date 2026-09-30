@@ -1,5 +1,15 @@
 import apiClient from './client'
-import type { Deal, DealActivity, PaginatedResponse, PipelineSummary, PoWorkflow, PoWorkflowDashboard, PulseImportResult } from '../types'
+import type {
+  Deal,
+  DealActivity,
+  PaginatedResponse,
+  PipelineSummary,
+  PoDocumentIssue,
+  PoIssueReason,
+  PoWorkflow,
+  PoWorkflowDashboard,
+  PulseImportResult,
+} from '../types'
 
 interface DealFilters {
   search?: string
@@ -73,6 +83,31 @@ export const dealsApi = {
   },
   approvePoWorkflow: async (id: string): Promise<PoWorkflow> => {
     const response = await apiClient.post<PoWorkflow>(`/deals/po-workflow/${id}/approve/`)
+    return response.data
+  },
+  listPoIssues: async (params?: { opportunity?: string; status?: 'OPEN' | 'RESOLVED' }): Promise<PoDocumentIssue[]> => {
+    const response = await apiClient.get<PoDocumentIssue[]>('/deals/po-issues/', {
+      params: { opportunity: params?.opportunity || undefined, status: params?.status || undefined },
+    })
+    return response.data
+  },
+  poIssueReasons: async (): Promise<PoIssueReason[]> => {
+    const response = await apiClient.get<PoIssueReason[]>('/deals/po-issues/reasons/')
+    return response.data
+  },
+  createPoIssue: async (data: {
+    opportunity: string
+    reasons: string[]
+    attachment_ids: string[]
+    note: string
+  }): Promise<PoDocumentIssue> => {
+    const response = await apiClient.post<PoDocumentIssue>('/deals/po-issues/', data)
+    return response.data
+  },
+  resolvePoIssue: async (id: string, resolutionNote: string): Promise<PoDocumentIssue> => {
+    const response = await apiClient.post<PoDocumentIssue>(`/deals/po-issues/${id}/resolve/`, {
+      resolution_note: resolutionNote,
+    })
     return response.data
   },
   exportPoWorkflow: async (): Promise<Blob> => {

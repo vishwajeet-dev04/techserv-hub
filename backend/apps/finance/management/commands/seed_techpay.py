@@ -17,6 +17,7 @@ from apps.finance.models import (
     PayableStatus,
     PurchaseOrder,
     PurchaseOrderStatus,
+    payable_due_date,
 )
 
 
@@ -114,7 +115,7 @@ class Command(BaseCommand):
             ('Deloitte', 'Professional Charges', 'DEL-Q1', Decimal('320000'), date(2026, 8, 28)),
             ('Indigo', 'Travel - Flights', 'IND-0618', Decimal('84200'), date(2026, 7, 30)),
         ]
-        for vendor, category, number, amount, due in payables:
+        for vendor, category, number, amount, invoice_date in payables:
             Payable.objects.update_or_create(
                 invoice_number=number,
                 defaults={
@@ -125,7 +126,8 @@ class Command(BaseCommand):
                     'gst_amount': (amount - amount / Decimal('1.18')).quantize(Decimal('0.01')),
                     'total_amount': amount,
                     'payable_amount': amount,
-                    'due_date': due,
+                    'invoice_date': invoice_date,
+                    'due_date': payable_due_date(invoice_date),
                     'status': PayableStatus.PENDING,
                 },
             )

@@ -12,6 +12,8 @@ interface Props {
   templateName: string
   exportName: string
   onImported: () => void
+  /** Hide Import and Template for roles that cannot write. */
+  readOnly?: boolean
 }
 
 export default function PulseExcelBar({
@@ -21,6 +23,7 @@ export default function PulseExcelBar({
   templateName,
   exportName,
   onImported,
+  readOnly = false,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -39,14 +42,16 @@ export default function PulseExcelBar({
 
   return (
     <div className="flex flex-wrap gap-2">
-      <button
-        type="button"
-        disabled={busy}
-        className={`${btnSecondaryClass} text-xs`}
-        onClick={() => inputRef.current?.click()}
-      >
-        Import
-      </button>
+      {readOnly ? null : (
+        <button
+          type="button"
+          disabled={busy}
+          className={`${btnSecondaryClass} text-xs`}
+          onClick={() => inputRef.current?.click()}
+        >
+          Import
+        </button>
+      )}
       <button
         type="button"
         disabled={busy}
@@ -58,17 +63,19 @@ export default function PulseExcelBar({
       >
         Export
       </button>
-      <button
-        type="button"
-        disabled={busy}
-        className={`${btnSecondaryClass} text-xs`}
-        onClick={() => run(async () => {
-          downloadBlob(await onTemplate(), templateName)
-          notify.success('Template downloaded.')
-        })}
-      >
-        Template
-      </button>
+      {readOnly ? null : (
+        <button
+          type="button"
+          disabled={busy}
+          className={`${btnSecondaryClass} text-xs`}
+          onClick={() => run(async () => {
+            downloadBlob(await onTemplate(), templateName)
+            notify.success('Template downloaded.')
+          })}
+        >
+          Template
+        </button>
+      )}
       <input
         ref={inputRef}
         type="file"
@@ -83,7 +90,8 @@ export default function PulseExcelBar({
             const extra = result.errors.length
               ? ` ${result.errors.length} row${result.errors.length === 1 ? '' : 's'} failed.`
               : ''
-            const message = `Imported ${result.created} row${result.created === 1 ? '' : 's'}.${extra}`
+            const updated = result.updated ? `, updated ${result.updated}` : ''
+            const message = `Imported ${result.created} row${result.created === 1 ? '' : 's'}${updated}.${extra}`
             if (result.errors[0]) {
               notify.info(`${message} First error (row ${result.errors[0].row}): ${result.errors[0].message}`)
             } else {

@@ -17,7 +17,11 @@ import type {
   OpsDashboardSeries,
   OpsSummary,
   BankPosition,
+  FinanceClient,
+  FinanceVendor,
+  MasterDataListParams,
   PaginatedResponse,
+  PulseImportResult,
   PurchaseOrder,
   MisUpload,
 } from '../types'
@@ -29,7 +33,7 @@ export interface PeriodCreatePayload {
   label: string
 }
 
-function cleanParams(params?: LedgerListParams) {
+function cleanParams(params?: LedgerListParams | MasterDataListParams) {
   if (!params) return { page_size: 200 }
   const next: Record<string, string | number> = { page_size: params.page_size ?? 200 }
   for (const [key, value] of Object.entries(params)) {
@@ -115,7 +119,7 @@ export const financeApi = {
   },
   ledgerSummary: async (
     page: 'cashflow' | 'payables' | 'invoices' | 'clients' | 'purchase-orders',
-    params?: Pick<LedgerListParams, 'from' | 'to'>,
+    params?: Pick<LedgerListParams, 'from' | 'to' | 'account'>,
   ): Promise<
     | LedgerCashflowSummary
     | LedgerPayablesSummary
@@ -128,6 +132,7 @@ export const financeApi = {
         page,
         ...(params?.from ? { from: params.from } : {}),
         ...(params?.to ? { to: params.to } : {}),
+        ...(params?.account ? { account: params.account } : {}),
       },
     })
     return response.data
@@ -189,5 +194,67 @@ export const financeApi = {
   },
   deleteCompliance: async (id: string): Promise<void> => {
     await apiClient.delete(`/finance/compliance/${id}/`)
+  },
+  listClients: async (params?: MasterDataListParams): Promise<PaginatedResponse<FinanceClient>> => {
+    const response = await apiClient.get<PaginatedResponse<FinanceClient>>('/finance/clients/', {
+      params: cleanParams(params),
+    })
+    return response.data
+  },
+  createClient: async (data: Partial<FinanceClient>): Promise<FinanceClient> => {
+    const response = await apiClient.post<FinanceClient>('/finance/clients/', data)
+    return response.data
+  },
+  updateClient: async (id: string, data: Partial<FinanceClient>): Promise<FinanceClient> => {
+    const response = await apiClient.patch<FinanceClient>(`/finance/clients/${id}/`, data)
+    return response.data
+  },
+  deleteClient: async (id: string): Promise<void> => {
+    await apiClient.delete(`/finance/clients/${id}/`)
+  },
+  exportClients: async (): Promise<Blob> => {
+    const response = await apiClient.get('/finance/clients/export/', { responseType: 'blob' })
+    return response.data
+  },
+  clientTemplate: async (): Promise<Blob> => {
+    const response = await apiClient.get('/finance/clients/template/', { responseType: 'blob' })
+    return response.data
+  },
+  importClients: async (file: File): Promise<PulseImportResult> => {
+    const form = new FormData()
+    form.append('file', file)
+    const response = await apiClient.post<PulseImportResult>('/finance/clients/import/', form)
+    return response.data
+  },
+  listVendors: async (params?: MasterDataListParams): Promise<PaginatedResponse<FinanceVendor>> => {
+    const response = await apiClient.get<PaginatedResponse<FinanceVendor>>('/finance/vendors/', {
+      params: cleanParams(params),
+    })
+    return response.data
+  },
+  createVendor: async (data: Partial<FinanceVendor>): Promise<FinanceVendor> => {
+    const response = await apiClient.post<FinanceVendor>('/finance/vendors/', data)
+    return response.data
+  },
+  updateVendor: async (id: string, data: Partial<FinanceVendor>): Promise<FinanceVendor> => {
+    const response = await apiClient.patch<FinanceVendor>(`/finance/vendors/${id}/`, data)
+    return response.data
+  },
+  deleteVendor: async (id: string): Promise<void> => {
+    await apiClient.delete(`/finance/vendors/${id}/`)
+  },
+  exportVendors: async (): Promise<Blob> => {
+    const response = await apiClient.get('/finance/vendors/export/', { responseType: 'blob' })
+    return response.data
+  },
+  vendorTemplate: async (): Promise<Blob> => {
+    const response = await apiClient.get('/finance/vendors/template/', { responseType: 'blob' })
+    return response.data
+  },
+  importVendors: async (file: File): Promise<PulseImportResult> => {
+    const form = new FormData()
+    form.append('file', file)
+    const response = await apiClient.post<PulseImportResult>('/finance/vendors/import/', form)
+    return response.data
   },
 }

@@ -176,7 +176,7 @@ function UserRow({
             type="button"
             onClick={() => onDeactivate(user.id)}
             disabled={deactivating}
-            className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+            className="text-xs font-medium text-danger hover:text-danger/80 disabled:opacity-50"
           >
             Deactivate
           </button>
@@ -219,7 +219,7 @@ export default function Users() {
   })
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-screen-xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-ink">Users</h2>

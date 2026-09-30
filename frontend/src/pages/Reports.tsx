@@ -10,6 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 import { reportsApi } from '../api/reports'
+import { chartGridStroke, chartTick } from '../lib/chartTheme'
 import { getErrorMessage } from '../api/errors'
 import type {
   CompanyStats,
@@ -163,7 +164,7 @@ function readMetric(metrics: FinancialReportMetrics, code: string): number {
 }
 
 function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse bg-[#f5f5f7] rounded-xl ${className ?? ''}`} />
+  return <div className={`animate-pulse bg-canvas rounded-xl ${className ?? ''}`} />
 }
 
 function ReportSkeleton() {
@@ -182,12 +183,12 @@ function ReportSkeleton() {
 
 function ReportError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="bg-surface border border-[#e5e5ea] rounded-2xl p-8 text-center shadow-sm">
-      <p className="text-sm text-[#6e6e73]">{message}</p>
+    <div className="bg-surface border border-line rounded-2xl p-8 text-center shadow-sm">
+      <p className="text-sm text-muted">{message}</p>
       <button
         type="button"
         onClick={onRetry}
-        className="mt-3 text-xs text-violet-600 hover:text-violet-700"
+        className="mt-3 text-xs text-brand hover:text-brand-hover"
       >
         Retry
       </button>
@@ -201,7 +202,7 @@ function PrintButton() {
       type="button"
       title="Print report"
       onClick={() => window.print()}
-      className="print:hidden flex items-center gap-2 px-4 py-2 bg-surface border border-[#e5e5ea] hover:border-[#d1d1d6] text-[#6e6e73] hover:text-[#1a1a1a] text-sm font-medium rounded-xl transition-colors"
+      className="print:hidden flex items-center gap-2 px-4 py-2 bg-surface border border-line hover:border-subtle text-muted hover:text-ink text-sm font-medium rounded-xl transition-colors"
     >
       <PrinterIcon />
       Print / Export
@@ -219,13 +220,13 @@ function PeriodSelect({
   onChange: (id: string) => void
 }) {
   if (periods.length === 0) {
-    return <p className="text-xs text-[#aeaeb2]">No financial periods yet</p>
+    return <p className="text-xs text-subtle">No financial periods yet</p>
   }
   return (
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="print:hidden bg-surface border border-[#e5e5ea] rounded-xl px-3 py-2 text-sm text-[#1a1a1a] focus:outline-none focus:border-violet-400"
+      className="print:hidden bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:border-violet-400"
     >
       {periods.map((period) => (
         <option key={period.id} value={period.id}>
@@ -246,10 +247,10 @@ function ReportHeader({
   extra?: ReactNode
 }) {
   return (
-    <div className="sticky top-0 z-10 -mx-1 px-1 py-3 mb-2 bg-[#f5f5f7]/90 backdrop-blur-sm flex items-start justify-between gap-3 flex-wrap print:static print:bg-transparent">
+    <div className="sticky top-0 z-10 -mx-1 px-1 py-3 mb-2 bg-canvas/90 backdrop-blur-sm flex items-start justify-between gap-3 flex-wrap print:static print:bg-transparent">
       <div>
-        <h3 className="text-sm font-semibold text-[#1a1a1a]">{title}</h3>
-        <p className="text-xs text-[#aeaeb2] mt-0.5">Generated {fmtWhen(generatedAt)}</p>
+        <h3 className="text-sm font-semibold text-ink">{title}</h3>
+        <p className="text-xs text-subtle mt-0.5">Generated {fmtWhen(generatedAt)}</p>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         {extra}
@@ -261,18 +262,18 @@ function ReportHeader({
 
 function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl p-4">
-      <p className="text-[11px] font-medium uppercase tracking-widest text-[#6e6e73]">{label}</p>
-      <p className="text-xl font-semibold text-[#1a1a1a] mt-2 leading-none">{value}</p>
-      {sub ? <p className="text-xs text-[#aeaeb2] mt-1.5">{sub}</p> : null}
+    <div className="bg-surface border border-line shadow-sm rounded-2xl p-4">
+      <p className="text-[11px] font-medium uppercase tracking-widest text-muted">{label}</p>
+      <p className="text-xl font-semibold text-ink mt-2 leading-none">{value}</p>
+      {sub ? <p className="text-xs text-subtle mt-1.5">{sub}</p> : null}
     </div>
   )
 }
 
 function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="bg-surface border border-[#e5e5ea] shadow-sm rounded-2xl p-5">
-      <p className="text-[#6e6e73] text-xs font-semibold uppercase tracking-widest mb-3">{title}</p>
+    <div className="bg-surface border border-line shadow-sm rounded-2xl p-5">
+      <p className="text-muted text-xs font-semibold uppercase tracking-widest mb-3">{title}</p>
       {children}
     </div>
   )
@@ -288,17 +289,17 @@ function DataTable({
   empty: string
 }) {
   if (rows.length === 0) {
-    return <p className="text-sm text-[#aeaeb2] py-4">{empty}</p>
+    return <p className="text-sm text-subtle py-4">{empty}</p>
   }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left">
         <thead>
-          <tr className="bg-[#f9f9fb] border-b border-[#e5e5ea]">
+          <tr className="bg-canvas border-b border-line">
             {columns.map((column) => (
               <th
                 key={column}
-                className="px-5 py-3.5 text-left text-[10px] font-semibold text-[#aeaeb2] uppercase tracking-widest"
+                className="px-5 py-3.5 text-left text-[10px] font-semibold text-subtle uppercase tracking-widest"
               >
                 {column}
               </th>
@@ -307,11 +308,11 @@ function DataTable({
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={`${row[0]}-${index}`} className="border-b border-[#f5f5f7] last:border-0 hover:bg-[#f9f9fb] transition-colors duration-100">
+            <tr key={`${row[0]}-${index}`} className="border-b border-canvas last:border-0 hover:bg-canvas transition-colors duration-100">
               {row.map((cell, cellIndex) => (
                 <td
                   key={`${index}-${cellIndex}`}
-                  className={`px-5 py-3.5 text-sm ${cellIndex === 0 ? 'text-[#3a3a3c] font-medium' : 'text-[#1a1a1a] text-right'}`}
+                  className={`px-5 py-3.5 text-sm ${cellIndex === 0 ? 'text-ink font-medium' : 'text-ink text-right'}`}
                 >
                   {cell}
                 </td>
@@ -335,13 +336,13 @@ function TrendTooltip({
 }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-surface border border-[#e5e5ea] rounded-xl px-4 py-3 shadow-lg">
-      <p className="text-xs text-[#6e6e73] mb-2">{label}</p>
+    <div className="bg-surface border border-line rounded-xl px-4 py-3 shadow-lg">
+      <p className="text-xs text-muted mb-2">{label}</p>
       {payload.map((item) => (
         <div key={item.name} className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full" style={{ background: item.color }} />
-          <span className="text-xs text-[#6e6e73]">{item.name === 'revenue' ? 'Revenue' : 'Net Profit'}</span>
-          <span className="text-xs font-medium text-[#1a1a1a] ml-auto pl-4">{fmtCurrency(item.value)}</span>
+          <span className="text-xs text-muted">{item.name === 'revenue' ? 'Revenue' : 'Net Profit'}</span>
+          <span className="text-xs font-medium text-ink ml-auto pl-4">{fmtCurrency(item.value)}</span>
         </div>
       ))}
     </div>
@@ -379,7 +380,7 @@ function MonthlySummaryView({
         {data.highlights.map((highlight) => (
           <span
             key={highlight}
-            className="px-3 py-1.5 rounded-full bg-violet-50 border border-violet-200 text-xs font-medium text-violet-700"
+            className="px-3 py-1.5 rounded-full bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800 text-xs font-medium text-violet-700 dark:text-violet-300"
           >
             {highlight}
           </span>
@@ -398,25 +399,25 @@ function MonthlySummaryView({
         <Panel title="Pipeline summary">
           <div className="space-y-2.5">
             <div className="flex justify-between text-sm">
-              <span className="text-[#6e6e73]">Total pipeline</span>
-              <span className="font-medium text-[#1a1a1a]">{fmtCurrency(pipeline.total_pipeline)}</span>
+              <span className="text-muted">Total pipeline</span>
+              <span className="font-medium text-ink">{fmtCurrency(pipeline.total_pipeline)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-[#6e6e73]">Weighted</span>
-              <span className="font-medium text-[#1a1a1a]">{fmtCurrency(pipeline.weighted_pipeline)}</span>
+              <span className="text-muted">Weighted</span>
+              <span className="font-medium text-ink">{fmtCurrency(pipeline.weighted_pipeline)}</span>
             </div>
-            <div className="pt-2 mt-2 border-t border-[#f5f5f7] space-y-2">
+            <div className="pt-2 mt-2 border-t border-canvas space-y-2">
               {pipeline.by_stage.length > 0 ? (
                 pipeline.by_stage.map((row) => (
                   <div key={row.stage} className="flex justify-between text-sm">
-                    <span className="text-[#6e6e73]">
+                    <span className="text-muted">
                       {stageLabels[row.stage]} · {row.count}
                     </span>
-                    <span className="font-medium text-[#1a1a1a]">{fmtCurrency(row.total_value || 0)}</span>
+                    <span className="font-medium text-ink">{fmtCurrency(row.total_value || 0)}</span>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-[#aeaeb2]">No active deals</p>
+                <p className="text-sm text-subtle">No active deals</p>
               )}
             </div>
           </div>
@@ -432,29 +433,29 @@ function MonthlySummaryView({
             <AreaChart data={data.revenue_trend} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="reportRevenue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                  <stop offset="5%" stopColor="var(--color-chart-1)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="var(--color-chart-1)" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="reportProfit" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                  <stop offset="5%" stopColor="var(--color-chart-2)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="var(--color-chart-2)" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e5ea" />
-              <XAxis dataKey="period" tick={{ fill: '#aeaeb2', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
+              <XAxis dataKey="period" tick={chartTick} axisLine={false} tickLine={false} />
               <YAxis
-                tick={{ fill: '#aeaeb2', fontSize: 11 }}
+                tick={chartTick}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(value: number) => fmtCurrency(value, true)}
               />
               <Tooltip content={<TrendTooltip />} />
-              <Area type="monotone" dataKey="revenue" stroke="#8b5cf6" strokeWidth={2} fill="url(#reportRevenue)" />
-              <Area type="monotone" dataKey="net_profit" stroke="#10b981" strokeWidth={2} fill="url(#reportProfit)" />
+              <Area type="monotone" dataKey="revenue" stroke="var(--color-chart-1)" strokeWidth={2} fill="url(#reportRevenue)" />
+              <Area type="monotone" dataKey="net_profit" stroke="var(--color-chart-2)" strokeWidth={2} fill="url(#reportProfit)" />
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <p className="text-sm text-[#aeaeb2] py-8 text-center">No financial data yet</p>
+          <p className="text-sm text-subtle py-8 text-center">No financial data yet</p>
         )}
       </Panel>
     </div>
@@ -473,8 +474,8 @@ function BusinessRows({ business }: { business: CompanyStats }) {
     <div className="space-y-2.5">
       {rows.map(([label, value]) => (
         <div key={label} className="flex justify-between text-sm">
-          <span className="text-[#6e6e73]">{label}</span>
-          <span className="font-medium text-[#1a1a1a]">{fmtNumber(value)}</span>
+          <span className="text-muted">{label}</span>
+          <span className="font-medium text-ink">{fmtNumber(value)}</span>
         </div>
       ))}
     </div>
@@ -605,7 +606,7 @@ function CustomerRevenueView({ data }: { data: CustomerRevenueReport }) {
     <div className="space-y-5">
       <ReportHeader title="Customer Revenue Report" generatedAt={data.generated_at} />
       {risk.is_concentrated ? (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3">
+        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 rounded-xl px-4 py-3">
           <p className="text-sm font-medium">Concentration risk</p>
           <p className="text-xs mt-0.5">
             Top customer is {fmtPct(risk.top_customer_percentage)} of deal value. Top 3 account for{' '}
@@ -613,7 +614,7 @@ function CustomerRevenueView({ data }: { data: CustomerRevenueReport }) {
           </p>
         </div>
       ) : (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-xl px-4 py-3">
+        <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 rounded-xl px-4 py-3">
           <p className="text-sm font-medium">All clear</p>
           <p className="text-xs mt-0.5">
             Top customer is {fmtPct(risk.top_customer_percentage)} of deal value. No concentration above 40%.
@@ -669,20 +670,20 @@ function ReportCard({
       className={`text-left bg-surface border shadow-sm rounded-2xl p-6 transition-all duration-200 cursor-pointer ${
         selected
           ? 'border-violet-300 ring-2 ring-violet-100'
-          : 'border-[#e5e5ea] hover:shadow-md hover:border-[#d1d1d6]'
+          : 'border-line hover:shadow-md hover:border-subtle'
       }`}
     >
       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center text-white mb-4">
         {report.icon}
       </div>
       <div className="flex items-start justify-between gap-3 mb-2">
-        <h3 className="text-sm font-semibold text-[#1a1a1a]">{report.title}</h3>
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-violet-50 border border-violet-200 shrink-0">
-          <span className="text-xs text-violet-700 font-medium">{selected ? 'Viewing' : 'View'}</span>
+        <h3 className="text-sm font-semibold text-ink">{report.title}</h3>
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800 shrink-0">
+          <span className="text-xs text-brand font-medium">{selected ? 'Viewing' : 'View'}</span>
         </span>
       </div>
-      <p className="text-xs text-[#6e6e73] leading-relaxed">{report.description}</p>
-      <p className="text-xs text-[#aeaeb2] mt-3">
+      <p className="text-xs text-muted leading-relaxed">{report.description}</p>
+      <p className="text-xs text-subtle mt-3">
         {generatedAt ? `Last generated ${fmtWhen(generatedAt)}` : 'Live from dashboard KPIs'}
       </p>
     </button>
@@ -786,17 +787,17 @@ export default function Reports() {
   const [generatedAt, setGeneratedAt] = useState<Partial<Record<ReportId, string>>>({})
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-screen-xl mx-auto space-y-6">
       <div className="print:hidden">
-        <h2 className="text-2xl font-semibold text-[#1a1a1a]">Reports</h2>
-        <p className="text-xs text-[#aeaeb2] mt-0.5">Pipeline, finance, and customer views from live data</p>
+        <h2 className="text-2xl font-semibold text-ink">Reports</h2>
+        <p className="text-xs text-subtle mt-0.5">Pipeline, finance, and customer views from live data</p>
       </div>
 
-      <div className="print:hidden flex items-start gap-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
-        <div className="text-blue-700 mt-0.5">
+      <div className="print:hidden flex items-start gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl">
+        <div className="text-info mt-0.5">
           <InfoIcon />
         </div>
-        <p className="text-xs text-blue-700 leading-relaxed">
+        <p className="text-xs text-info leading-relaxed">
           Reports use live KPI data from the same services that power the dashboard. All calculations
           are deterministic and traceable to source records.
         </p>

@@ -21,11 +21,11 @@ const TYPES: PulseReminderType[] = [
 ]
 
 const typeClass: Record<string, string> = {
-  TASK: 'bg-blue-50 text-blue-700',
-  FOLLOW_UP: 'bg-sky-50 text-sky-700',
+  TASK: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300',
+  FOLLOW_UP: 'bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300',
   HIGH_VALUE_ALERT: 'bg-pink-50 text-pink-700',
-  CLOSE_DATE: 'bg-red-50 text-red-700',
-  STALE_OPPORTUNITY: 'bg-amber-50 text-amber-800',
+  CLOSE_DATE: 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300',
+  STALE_OPPORTUNITY: 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300',
 }
 
 export default function PulseReminders() {
@@ -129,7 +129,7 @@ export default function PulseReminders() {
   const rows = list.data?.results ?? []
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
       <PulsePageHeader
         title="Reminders"
         subtitle="Manage your tasks and follow-ups."
@@ -186,7 +186,7 @@ export default function PulseReminders() {
                   <span className={`text-[10px] px-2 py-0.5 rounded ${typeClass[row.reminder_type]}`}>
                     {row.reminder_type.replaceAll('_', ' ')}
                   </span>
-                  <span className={`text-[10px] px-2 py-0.5 rounded ${row.status === 'DONE' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
+                  <span className={`text-[10px] px-2 py-0.5 rounded ${row.status === 'DONE' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300' : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300'}`}>
                     {row.status}
                   </span>
                 </div>
@@ -221,7 +221,7 @@ export default function PulseReminders() {
               </div>
               <h2 className="font-medium text-ink mt-3">{row.title}</h2>
               <p className="text-sm text-muted mt-1">{row.description || '—'}</p>
-              <p className={`text-xs mt-3 rounded-lg px-2 py-1 ${row.status === 'PENDING' && row.due_date ? 'bg-red-50 text-danger' : 'text-muted'}`}>
+              <p className={`text-xs mt-3 rounded-lg px-2 py-1 ${row.status === 'PENDING' && row.due_date ? 'bg-red-50 dark:bg-red-950/40 text-danger' : 'text-muted'}`}>
                 {row.due_date ? `Due: ${row.due_date}` : 'No due date'}
               </p>
               <div className="flex flex-wrap gap-2 mt-4">

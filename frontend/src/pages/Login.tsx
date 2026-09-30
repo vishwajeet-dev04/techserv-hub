@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Eye, EyeOff, Lock, User } from 'lucide-react'
 import { authApi } from '../api/auth'
+import { clearWorkspace } from '../lib/workspaces'
 import Logo from '../components/Logo'
 import ThemeToggle from '../components/ThemeToggle'
 
@@ -47,7 +48,8 @@ export default function Login() {
       localStorage.setItem('access_token', data.access)
       localStorage.setItem('refresh_token', data.refresh)
       queryClient.setQueryData(['me'], data.user)
-      navigate('/')
+      clearWorkspace()
+      navigate('/select-company')
     } catch {
       setError('Invalid email or password.')
     } finally {
@@ -81,8 +83,8 @@ export default function Login() {
             </div>
 
             {error ? (
-              <div className="mb-5 px-4 py-3 rounded-xl bg-red-50 border border-red-200">
-                <p className="text-sm text-red-600">{error}</p>
+              <div className="mb-5 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800">
+                <p className="text-sm text-danger">{error}</p>
               </div>
             ) : null}
 

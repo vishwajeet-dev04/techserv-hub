@@ -7,6 +7,7 @@ from rest_framework.exceptions import ValidationError as DrfValidationError
 
 from apps.business.models import Company
 from apps.deals.models import PoWorkflow
+from apps.deals.po_constants import LEGACY_MILESTONE_CYCLE, MILESTONE_CYCLE
 from apps.deals.po_excel import (
     build_po_workbook,
     dummy_po_rows,
@@ -45,6 +46,7 @@ def list_po_workflows(
             | Q(billing_entity__icontains=term)
             | Q(service_pillar__icontains=term)
             | Q(billing_cycle__icontains=term)
+            | Q(milestone_details__icontains=term)
             | Q(billing_due__icontains=term)
             | Q(opportunity__prospect_number__icontains=term)
             | Q(opportunity__name__icontains=term)
@@ -196,6 +198,15 @@ def _payload(*, customer_name: str, **fields) -> dict:
         if not value:
             errors[key] = f'{label} is required.'
         cleaned[key] = value[: PoWorkflow._meta.get_field(key).max_length]
+    if cleaned['billing_cycle'].lower() == LEGACY_MILESTONE_CYCLE.lower():
+        cleaned['billing_cycle'] = MILESTONE_CYCLE
+    milestone_details = str(fields.get('milestone_details') or '').strip()
+    if cleaned['billing_cycle'] == MILESTONE_CYCLE:
+        if not milestone_details:
+            errors['milestone_details'] = 'Milestone Details is required for Milestone billing.'
+        cleaned['milestone_details'] = milestone_details[:255]
+    else:
+        cleaned['milestone_details'] = ''
     if errors:
         raise DrfValidationError(errors)
     cleaned.update({
@@ -237,6 +248,7 @@ def update_po_workflow(instance: PoWorkflow, *, customer_name: str | None = None
         if 'value_per_invoice' in fields
         else instance.value_per_invoice,
         'billing_cycle': fields.get('billing_cycle', instance.billing_cycle),
+        'milestone_details': fields.get('milestone_details', instance.milestone_details),
         'billing_due': fields.get('billing_due', instance.billing_due),
     }
     if 'opportunity' in fields:

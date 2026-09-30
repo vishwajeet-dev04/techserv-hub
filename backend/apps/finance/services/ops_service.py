@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from apps.finance.models import (
     CapitalEntry,
+    CashflowAccount,
     CashflowDirection,
     CashflowEntry,
     Invoice,
@@ -50,9 +51,9 @@ def _po_in_range(qs, date_from: date | None, date_to: date | None):
 
 def _payable_in_range(qs, date_from: date | None, date_to: date | None):
     if date_from:
-        qs = qs.filter(Q(due_date__gte=date_from) | Q(due_date__isnull=True, created_at__date__gte=date_from))
+        qs = qs.filter(Q(invoice_date__gte=date_from) | Q(invoice_date__isnull=True, created_at__date__gte=date_from))
     if date_to:
-        qs = qs.filter(Q(due_date__lte=date_to) | Q(due_date__isnull=True, created_at__date__lte=date_to))
+        qs = qs.filter(Q(invoice_date__lte=date_to) | Q(invoice_date__isnull=True, created_at__date__lte=date_to))
     return qs
 
 
@@ -109,8 +110,8 @@ def get_ops_summary(date_from: str | None = None, date_to: str | None = None) ->
             overdue_rows.append(row)
 
     due_total = due_0_7 + due_8_30
-    inflows = _in_range(CashflowEntry.objects.filter(direction=CashflowDirection.INFLOW), 'entry_date', start, end)
-    outflows = _in_range(CashflowEntry.objects.filter(direction=CashflowDirection.OUTFLOW), 'entry_date', start, end)
+    inflows = _in_range(CashflowEntry.objects.filter(account=CashflowAccount.CURRENT, direction=CashflowDirection.INFLOW), 'entry_date', start, end)
+    outflows = _in_range(CashflowEntry.objects.filter(account=CashflowAccount.CURRENT, direction=CashflowDirection.OUTFLOW), 'entry_date', start, end)
 
     def _bucket_sum(qs, bucket):
         return _money(qs.filter(bucket=bucket).aggregate(total=Sum('amount'))['total'])
@@ -252,7 +253,7 @@ def get_ops_dashboard_series(date_from: str | None = None, date_to: str | None =
         for m in month_starts
     }
     cash_rows = (
-        CashflowEntry.objects.filter(entry_date__gte=start_month, entry_date__lte=_month_end(end_month))
+        CashflowEntry.objects.filter(account=CashflowAccount.CURRENT, entry_date__gte=start_month, entry_date__lte=_month_end(end_month))
         .annotate(month=TruncMonth('entry_date'))
         .values('month', 'direction')
         .annotate(total=Sum('amount'))
@@ -272,7 +273,7 @@ def get_ops_dashboard_series(date_from: str | None = None, date_to: str | None =
         item['net'] = item['inflow'] - item['outflow']
 
     category_rows = (
-        _in_range(CashflowEntry.objects.filter(direction=CashflowDirection.INFLOW), 'entry_date', start, end)
+        _in_range(CashflowEntry.objects.filter(account=CashflowAccount.CURRENT, direction=CashflowDirection.INFLOW), 'entry_date', start, end)
         .values('category')
         .annotate(total=Sum('amount'))
         .order_by('-total')

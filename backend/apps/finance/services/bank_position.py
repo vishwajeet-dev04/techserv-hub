@@ -1,4 +1,4 @@
-"""Bank Position summary from CashflowEntry (MIS Bank book)."""
+"""Bank Position summary from CashflowEntry (MIS Bank book per account)."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from django.db.models import Sum
 
-from apps.finance.models import CashflowDirection, CashflowEntry
+from apps.finance.models import CashflowAccount, CashflowDirection, CashflowEntry
 
 
 def _money(value) -> float:
@@ -17,12 +17,9 @@ def _sum_amount(qs) -> Decimal:
     return qs.aggregate(total=Sum('amount'))['total'] or Decimal('0')
 
 
-def get_bank_position(date_from: str | None = None, date_to: str | None = None) -> dict:
-    """
-    Operational Account from Current A/c Bank book cashflow.
-    Seed Fund is Option 1 (awaiting Seed book); mirror Contra as transfer_to_ops.
-    """
-    qs = CashflowEntry.objects.all()
+def _account_position(account: str, date_from: str | None, date_to: str | None) -> dict:
+    base = CashflowEntry.objects.filter(account=account)
+    qs = base
     if date_from:
         qs = qs.filter(entry_date__gte=date_from)
     if date_to:
@@ -31,7 +28,7 @@ def get_bank_position(date_from: str | None = None, date_to: str | None = None) 
     opening_qs = qs.filter(sub_category__iexact='Opening')
     # If range has no Opening row, use latest Opening on/before from (or any Opening before activity).
     if not opening_qs.exists():
-        prior = CashflowEntry.objects.filter(sub_category__iexact='Opening')
+        prior = base.filter(sub_category__iexact='Opening')
         if date_from:
             prior = prior.filter(entry_date__lte=date_from)
         opening_qs = prior.order_by('-entry_date')[:1]
@@ -43,15 +40,32 @@ def get_bank_position(date_from: str | None = None, date_to: str | None = None) 
     transfer_out = _sum_amount(
         qs.filter(sub_category__iexact='Contra', direction=CashflowDirection.OUTFLOW)
     )
-    revenue_receipts = _sum_amount(
+    receipts = _sum_amount(
         qs.filter(sub_category__iexact='Receipt', direction=CashflowDirection.INFLOW)
     )
-    all_outflows = _sum_amount(
+    outflows = _sum_amount(
         qs.filter(sub_category__iexact='Payment', direction=CashflowDirection.OUTFLOW)
     )
-    closing = opening + revenue_receipts + transfer_in - all_outflows - transfer_out
+    closing = opening + receipts + transfer_in - outflows - transfer_out
+    return {
+        'available': qs.exclude(sub_category__iexact='Opening').exists() or opening > 0,
+        'opening': opening,
+        'transfer_in': transfer_in,
+        'transfer_out': transfer_out,
+        'receipts': receipts,
+        'outflows': outflows,
+        'closing': closing,
+    }
 
-    has_ops_activity = qs.exclude(sub_category__iexact='Opening').exists() or opening > 0
+
+def get_bank_position(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    account: str = CashflowAccount.CURRENT,
+) -> dict:
+    """Operational (Current A/c) and Seed Fund positions from their Bank books."""
+    ops = _account_position(CashflowAccount.CURRENT, date_from, date_to)
+    seed = _account_position(CashflowAccount.SEED, date_from, date_to)
 
     period_label = ''
     if date_from and date_to:
@@ -63,30 +77,33 @@ def get_bank_position(date_from: str | None = None, date_to: str | None = None) 
     else:
         period_label = 'All imported'
 
+    selected = seed if account == CashflowAccount.SEED else ops
     return {
         'period_label': period_label,
-        'combined_closing': _money(closing),
-        'combined_scope': 'operational',
+        'account': account,
+        'combined_closing': _money(selected['closing']),
+        'combined_scope': 'seed' if account == CashflowAccount.SEED else 'operational',
         'operational': {
-            'available': has_ops_activity,
+            'available': ops['available'],
             'label': 'Operational Account',
             'subtitle': 'Current A/c · Day-to-Day',
-            'opening': _money(opening),
-            'transfer_in': _money(transfer_in),
-            'transfer_out': _money(transfer_out),
-            'revenue_receipts': _money(revenue_receipts),
-            'all_outflows': _money(all_outflows),
-            'closing': _money(closing),
+            'opening': _money(ops['opening']),
+            'transfer_in': _money(ops['transfer_in']),
+            'transfer_out': _money(ops['transfer_out']),
+            'revenue_receipts': _money(ops['receipts']),
+            'all_outflows': _money(ops['outflows']),
+            'closing': _money(ops['closing']),
         },
         'seed': {
-            'available': False,
+            'available': seed['available'],
             'label': 'Seed Fund Account',
             'subtitle': 'Seedfund · Capital Pool',
-            'opening': None,
-            'disbursements': None,
-            'transfer_to_ops': _money(transfer_in) if transfer_in else None,
-            'closing': None,
-            'status': 'awaiting_seed_bank_book',
+            'opening': _money(seed['opening']) if seed['available'] else None,
+            'receipts': _money(seed['receipts']) if seed['available'] else None,
+            'disbursements': _money(seed['outflows']) if seed['available'] else None,
+            'transfer_to_ops': _money(seed['transfer_out'] or ops['transfer_in']) or None,
+            'closing': _money(seed['closing']) if seed['available'] else None,
+            'status': 'available' if seed['available'] else 'awaiting_seed_bank_book',
         },
-        'internal_transfer': _money(transfer_in),
+        'internal_transfer': _money(ops['transfer_in']),
     }
