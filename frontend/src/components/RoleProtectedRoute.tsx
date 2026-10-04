@@ -19,7 +19,7 @@ export default function RoleProtectedRoute({ allowedRoles, children }: RoleProte
     )
   }
 
-  if (role && !allowedRoles.includes(role)) {
+  if (!role || !allowedRoles.includes(role)) {
     return <Navigate to="/" replace />
   }
 

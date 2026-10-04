@@ -423,6 +423,8 @@ export default function Deals() {
             onExport={dealsApi.exportPoWorkflow}
             onImport={dealsApi.importPoWorkflow}
             onImported={() => void invalidate()}
+            module="PO_WORKFLOW"
+            label="PO workflow"
           />
           <button
             type="button"

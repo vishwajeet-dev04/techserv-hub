@@ -167,6 +167,8 @@ export default function PulseContacts() {
               onExport={pulseApi.exportContacts}
               onImport={pulseApi.importContacts}
               onImported={() => void invalidate()}
+              module="PULSE_CONTACTS"
+              label="Contacts"
             />
             <button type="button" onClick={openCreate} className={btnPrimaryClass}>
               + Add Contact

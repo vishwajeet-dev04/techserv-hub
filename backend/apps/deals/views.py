@@ -6,6 +6,8 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.audit.imports import record_import
+from apps.audit.models import ImportModule
 from .models import Deal, PoDocumentIssue, PoWorkflow
 from .po_constants import MAX_IMPORT_BYTES, PO_ISSUE_REASONS
 from .po_issue_service import create_po_issue, list_po_issues, resolve_po_issue
@@ -237,6 +239,7 @@ def po_workflow_import(request):
     if error is not None:
         return error
     result = import_po_xlsx(content)
+    record_import(request, ImportModule.PO_WORKFLOW, content, result)
     logger.info(
         'PO workflow imported created=%s errors=%s user=%s path=%s',
         result['created'], len(result['errors']), request.user.id, request.path,

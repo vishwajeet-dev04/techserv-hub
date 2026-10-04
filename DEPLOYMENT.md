@@ -2,7 +2,7 @@
 
 Server: Ubuntu 24.04, user `azureuser`, `http://20.244.5.15`. Code lives in `~/techserv-hub` (branch `dev`).
 
-Services (see `docker-compose.yml`): `postgres`, `redis`, `backend` (gunicorn), `celery-worker`, `celery-beat`, `nginx` (React build + reverse proxy on port 80). Uploaded files are stored in the `media` Docker volume and served by nginx at `/media/`.
+Services (see `docker-compose.yml`): `postgres`, `redis`, `backend` (gunicorn), `celery-worker`, `celery-beat`, `nginx` (React build + reverse proxy on port 80). Uploaded files go to Azure Blob when `AZURE_CONTAINER` is set (see "Switch media to Azure Blob"); otherwise they are stored in the `media` Docker volume and served by nginx at `/media/`.
 
 Build one service at a time, then start it with `--no-build`. Do not run `docker compose up -d --build` for everything at once on this VM.
 
@@ -87,10 +87,43 @@ Copy backups off the VM (Azure Backup or `scp`). Never run `docker compose down 
 | `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE` | `False` | Set `True` once HTTPS is live |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | generated password | Letters and digits only. Changing them after the first start needs a manual DB change |
 | `EMAIL_*`, `DEFAULT_FROM_EMAIL` | Gmail SMTP + App Password | Empty `EMAIL_HOST` = emails only go to the logs |
+| `AZURE_CONTAINER`, `AZURE_ACCOUNT_NAME`, `AZURE_ACCOUNT_KEY` (or `AZURE_CONNECTION_STRING`), `AZURE_URL_EXPIRATION_SECS` | `media-prod`, `techservhubmedia`, key from DevOps, `3600` | Empty `AZURE_CONTAINER` = files stay on the `media` volume |
 
 `DATABASE_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` and `DJANGO_SETTINGS_MODULE` are set in `docker-compose.yml`.
 
 ## Later
 
 - **Domain + HTTPS:** point the domain to the VM, add a certificate (e.g. Certbot), open port 443, then update `ALLOWED_HOSTS`, the three URL keys and set both `*_COOKIE_SECURE=True`.
-- **Azure Blob for uploads:** add `django-storages[azure]`, switch `STORAGES["default"]` in `config/settings/production.py`, and copy the existing `media` volume into the container with `azcopy`.
+- **Retire the media volume** once Blob has run for a while and `copy_media_to_blob` reports nothing left to upload: remove the `/media/` block from `nginx/nginx.conf` and the `media` mounts from `docker-compose.yml` (keep a backup tarball first).
+
+## Switch media to Azure Blob
+
+Uploaded files go to Azure Blob when `AZURE_CONTAINER` is set in `.env`; otherwise they stay on the `media` volume. Each environment uses its own **private** container in the `techservhubmedia` account: `media-prod` on this server, `media-dev` on a laptop (or leave it unset locally to keep files on disk). File links in the app become signed URLs that expire after `AZURE_URL_EXPIRATION_SECS` (default 1 hour), so nothing is publicly listable.
+
+```bash
+cd ~/techserv-hub
+nano .env
+#   AZURE_CONTAINER=media-prod
+#   AZURE_ACCOUNT_NAME=techservhubmedia
+#   AZURE_ACCOUNT_KEY=<key from DevOps>      (or AZURE_CONNECTION_STRING=<full string>)
+#   AZURE_URL_EXPIRATION_SECS=3600
+
+git pull
+docker compose build backend
+docker compose up -d --no-build backend celery-worker celery-beat
+docker compose build nginx
+docker compose up -d --no-build nginx
+
+# Creates the container if needed (private) and checks write, read, signed URL, delete
+docker compose exec backend python manage.py blob_setup
+
+# Copy files already on the media volume (same names, existing blobs are skipped)
+docker compose exec backend python manage.py copy_media_to_blob --dry-run
+docker compose exec backend python manage.py copy_media_to_blob
+```
+
+Then open an old and a new Pulse attachment and an import-history download to confirm they work.
+
+After it works, ask DevOps to **rotate the storage key** (it was shared in chat), put the new key in `.env`, and run `docker compose up -d --no-build backend celery-worker celery-beat`. Rerun `blob_setup` to confirm.
+
+To go back to the volume, empty `AZURE_CONTAINER` and recreate the backend containers; files uploaded while on Blob stay in Blob until copied back.

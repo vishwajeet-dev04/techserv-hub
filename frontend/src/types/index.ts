@@ -935,10 +935,49 @@ export interface PulseSettings {
   companies: string[]
 }
 
+export interface ImportIssue {
+  row: number
+  message: string
+  sheet?: string
+}
+
 export interface PulseImportResult {
   created: number
   updated?: number
-  errors: { row: number; message: string }[]
+  contacts_created?: number
+  errors: ImportIssue[]
+  warnings?: ImportIssue[]
+  unmatched_assignees?: string[]
+  import_log_id?: string
+}
+
+export type ImportModule =
+  | 'PULSE_CONTACTS'
+  | 'PULSE_OPPORTUNITIES'
+  | 'PO_WORKFLOW'
+  | 'MASTER_CLIENTS'
+  | 'MASTER_VENDORS'
+
+export interface ImportLogEntry {
+  id: string
+  module: ImportModule
+  module_label: string
+  file_name: string
+  byte_size: number
+  has_file: boolean
+  uploaded_by: string | null
+  uploaded_by_name: string
+  uploaded_by_email: string
+  created_count: number
+  updated_count: number
+  error_count: number
+  warning_count: number
+  created_at: string
+}
+
+export interface ImportLogDetail extends ImportLogEntry {
+  errors: ImportIssue[]
+  warnings: ImportIssue[]
 }
 
 export interface FinanceClient {

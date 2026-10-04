@@ -2,7 +2,8 @@ import re
 import uuid as uuid_lib
 from pathlib import Path
 
-from django.conf import settings
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from rest_framework import serializers
 from .models import FinancialPeriod, FinancialDocument, FinancialMetric, METRIC_CODES, MisUpload
 from .models import (
@@ -77,18 +78,12 @@ class FinancialDocumentUploadSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         upload = validated_data.pop('file')
         extension = Path(upload.name).suffix.lstrip('.')[:10] or 'bin'
-        dest_dir = Path(settings.MEDIA_ROOT) / 'documents'
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        stored_name = f'{uuid_lib.uuid4()}_{Path(upload.name).name}'
-        dest_path = dest_dir / stored_name
-        with dest_path.open('wb+') as destination:
-            for chunk in upload.chunks():
-                destination.write(chunk)
+        stored_path = default_storage.save(f'documents/{uuid_lib.uuid4()}_{Path(upload.name).name}', upload)
 
         return FinancialDocument.objects.create(
             file_name=upload.name,
             file_type=extension,
-            storage_path=f'documents/{stored_name}',
+            storage_path=stored_path,
             **validated_data
         )
 
@@ -295,23 +290,15 @@ class MisUploadSerializer(serializers.ModelSerializer):
         from apps.finance.mis_import import import_mis_workbook
 
         upload = validated_data.pop('file')
-        dest_dir = Path(settings.MEDIA_ROOT) / 'mis'
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        stored_name = f'{uuid_lib.uuid4()}_{Path(upload.name).name}'
-        dest_path = dest_dir / stored_name
-        byte_size = 0
-        chunks = []
-        with dest_path.open('wb+') as destination:
-            for chunk in upload.chunks():
-                destination.write(chunk)
-                chunks.append(chunk)
-                byte_size += len(chunk)
-        content = b''.join(chunks)
+        content = b''.join(upload.chunks())
+        stored_path = default_storage.save(
+            f'mis/{uuid_lib.uuid4()}_{Path(upload.name).name}', ContentFile(content)
+        )
         instance = MisUpload.objects.create(
             file_name=Path(upload.name).name[:255],
             file_type='xlsx',
-            byte_size=byte_size,
-            storage_path=f'mis/{stored_name}',
+            byte_size=len(content),
+            storage_path=stored_path,
             **validated_data,
         )
         self.context['import_result'] = import_mis_workbook(content)

@@ -714,6 +714,8 @@ export default function PulseOpportunities() {
               onTemplate={pulseApi.opportunityTemplate}
               onExport={pulseApi.exportOpportunities}
               onImport={pulseApi.importOpportunities}
+              module="PULSE_OPPORTUNITIES"
+              label="Opportunities"
               onImported={() => {
                 void queryClient.invalidateQueries({ queryKey: ['pulse-opportunities'] })
                 void queryClient.invalidateQueries({ queryKey: ['pulse-summary'] })

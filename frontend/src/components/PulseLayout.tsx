@@ -196,7 +196,7 @@ export default function PulseLayout() {
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <ThemeToggle />
             {hasAccess('users') ? (
-              <Link to="/settings" title="Settings" aria-label="Settings" className={iconBtn}>
+              <Link to="/settings/users" title="Settings" aria-label="Settings" className={iconBtn}>
                 <Settings className="w-4 h-4" strokeWidth={2} />
               </Link>
             ) : null}

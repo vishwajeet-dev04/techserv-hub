@@ -353,7 +353,7 @@ export default function Layout() {
             <ThemeToggle />
             {hasAccess('users') ? (
               <Link
-                to="/settings"
+                to="/settings/users"
                 title="Settings"
                 aria-label="Settings"
                 className="w-10 h-10 sm:w-9 sm:h-9 rounded-xl text-muted hover:text-ink hover:bg-canvas flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand shrink-0"

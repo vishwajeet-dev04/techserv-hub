@@ -50,8 +50,9 @@ STAGE_VALUE = Case(
 
 class CompanyLookupRepository:
     def get_or_create_by_name(self, name: str) -> Company:
-        company, _ = Company.objects.get_or_create(name=name.strip())
-        return company
+        clean = name.strip()
+        existing = Company.objects.filter(name__iexact=clean).order_by('created_at').first()
+        return existing or Company.objects.create(name=clean)
 
 
 class PulseContactRepository:

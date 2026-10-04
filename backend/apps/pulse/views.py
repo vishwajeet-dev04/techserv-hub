@@ -7,6 +7,8 @@ from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.audit.imports import record_import
+from apps.audit.models import ImportModule
 from apps.pulse.constants import MAX_IMPORT_BYTES
 from apps.pulse.models import Opportunity, OpportunityActivityAttachment, PulseContact, Reminder
 from apps.pulse.serializers import (
@@ -28,6 +30,7 @@ DOCX_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.docu
 MAX_PREVIEW_ROWS = 200
 MAX_PREVIEW_COLS = 30
 MAX_PREVIEW_TEXT_CHARS = 20000
+MAX_CSV_PREVIEW_BYTES = 2 * 1024 * 1024
 
 
 def _collect_stage_files(request):
@@ -272,6 +275,27 @@ def _extract_xlsx_rows(file_field):
         file_field.close()
 
 
+def _extract_csv_rows(file_field):
+    import csv
+    from io import StringIO
+
+    file_field.open('rb')
+    try:
+        raw = file_field.read(MAX_CSV_PREVIEW_BYTES)
+    finally:
+        file_field.close()
+    try:
+        text = raw.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        text = raw.decode('latin-1')
+    rows = []
+    for row in csv.reader(StringIO(text)):
+        rows.append(row[:MAX_PREVIEW_COLS])
+        if len(rows) >= MAX_PREVIEW_ROWS:
+            break
+    return rows
+
+
 def _extract_docx_text(file_field):
     from docx import Document
 
@@ -296,6 +320,8 @@ def attachment_preview(request, pk):
     try:
         if name.endswith('.xlsx') or attachment.content_type == XLSX_TYPE:
             return Response({'kind': 'table', 'rows': _extract_xlsx_rows(attachment.file)})
+        if name.endswith('.csv') or attachment.content_type == 'text/csv':
+            return Response({'kind': 'table', 'rows': _extract_csv_rows(attachment.file)})
         if name.endswith('.docx') or attachment.content_type == DOCX_TYPE:
             return Response({'kind': 'text', 'text': _extract_docx_text(attachment.file)})
     except Exception:
@@ -432,9 +458,10 @@ def contacts_import(request):
     if error is not None:
         return error
     result = pulse_service.import_contacts_xlsx(content)
+    record_import(request, ImportModule.PULSE_CONTACTS, content, result)
     logger.info(
-        'Pulse contacts imported created=%s errors=%s user=%s path=%s',
-        result['created'], len(result['errors']), request.user.id, request.path,
+        'Pulse contacts imported created=%s updated=%s errors=%s user=%s path=%s',
+        result['created'], result['updated'], len(result['errors']), request.user.id, request.path,
     )
     return Response(result)
 
@@ -459,8 +486,10 @@ def opportunities_import(request):
     if error is not None:
         return error
     result = pulse_service.import_opportunities_xlsx(content)
+    record_import(request, ImportModule.PULSE_OPPORTUNITIES, content, result)
     logger.info(
-        'Pulse opportunities imported created=%s errors=%s user=%s path=%s',
-        result['created'], len(result['errors']), request.user.id, request.path,
+        'Pulse opportunities imported created=%s updated=%s contacts_created=%s errors=%s warnings=%s user=%s path=%s',
+        result['created'], result['updated'], result['contacts_created'],
+        len(result['errors']), len(result['warnings']), request.user.id, request.path,
     )
     return Response(result)

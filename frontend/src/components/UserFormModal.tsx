@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { usersApi } from '../api/users'
 import { getErrorMessage } from '../api/errors'
 import { notify } from '../lib/notify'
-import type { UserRole } from '../types'
+import type { User, UserRole } from '../types'
 import Modal, { btnPrimaryClass, btnSecondaryClass, fieldClass, labelClass } from './Modal'
 
 const ROLES: { value: UserRole; label: string }[] = [
@@ -17,40 +17,42 @@ const ROLES: { value: UserRole; label: string }[] = [
 interface UserFormModalProps {
   open: boolean
   onClose: () => void
+  /** When set, the modal edits this user instead of creating a new one. */
+  user?: User | null
+  isSelf?: boolean
 }
 
-export default function UserFormModal({ open, onClose }: UserFormModalProps) {
+export default function UserFormModal(props: UserFormModalProps) {
+  if (!props.open) return null
+  return <UserFormDialog key={props.user?.id ?? 'new'} {...props} />
+}
+
+function UserFormDialog({ open, onClose, user, isSelf = false }: UserFormModalProps) {
   const queryClient = useQueryClient()
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const editing = Boolean(user)
+  const [name, setName] = useState(user?.name ?? '')
+  const [email, setEmail] = useState(user?.email ?? '')
   const [password, setPassword] = useState('')
-  const [role, setRole] = useState<UserRole>('VIEWER')
+  const [role, setRole] = useState<UserRole>(user?.role ?? 'VIEWER')
+  const [isActive, setIsActive] = useState(user?.is_active ?? true)
   const [error, setError] = useState('')
 
-  const reset = () => {
-    setName('')
-    setEmail('')
-    setPassword('')
-    setRole('VIEWER')
-    setError('')
-  }
-
   const mutation = useMutation({
-    mutationFn: () =>
-      usersApi.create({
-        name: name.trim(),
-        email: email.trim(),
-        password,
-        role,
-      }),
+    mutationFn: async () => {
+      if (user) {
+        await usersApi.update(user.id, { name: name.trim(), email: email.trim(), role, is_active: isActive })
+        return
+      }
+      await usersApi.create({ name: name.trim(), email: email.trim(), password, role })
+    },
     onSuccess: async () => {
-      notify.success('User created.')
+      notify.success(editing ? 'User updated.' : 'User created.')
       await queryClient.invalidateQueries({ queryKey: ['users'] })
-      reset()
+      if (isSelf) await queryClient.invalidateQueries({ queryKey: ['me'] })
       onClose()
     },
     onError: (err) => {
-      const message = getErrorMessage(err, 'Could not create user.')
+      const message = getErrorMessage(err, editing ? 'Could not update user.' : 'Could not create user.')
       setError(message)
       notify.error(message)
     },
@@ -67,7 +69,7 @@ export default function UserFormModal({ open, onClose }: UserFormModalProps) {
       setError('Email is required.')
       return
     }
-    if (password.length < 8) {
+    if (!editing && password.length < 8) {
       setError('Password must be at least 8 characters.')
       return
     }
@@ -75,16 +77,13 @@ export default function UserFormModal({ open, onClose }: UserFormModalProps) {
   }
 
   const handleClose = () => {
-    if (!mutation.isPending) {
-      reset()
-      onClose()
-    }
+    if (!mutation.isPending) onClose()
   }
 
   return (
     <Modal
       open={open}
-      title="Add User"
+      title={editing ? 'Edit User' : 'Add User'}
       onClose={handleClose}
       footer={
         <>
@@ -105,6 +104,9 @@ export default function UserFormModal({ open, onClose }: UserFormModalProps) {
         <div>
           <label htmlFor="user-name" className={labelClass}>Name</label>
           <input id="user-name" className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} required />
+          {editing ? (
+            <p className="mt-1 text-xs text-subtle">Imported opportunities assigned to this exact name link to the user.</p>
+          ) : null}
         </div>
 
         <div>
@@ -112,21 +114,47 @@ export default function UserFormModal({ open, onClose }: UserFormModalProps) {
           <input id="user-email" type="email" className={fieldClass} value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
 
-        <div>
-          <label htmlFor="user-password" className={labelClass}>Password</label>
-          <input id="user-password" type="password" className={fieldClass} value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
-        </div>
+        {editing ? null : (
+          <div>
+            <label htmlFor="user-password" className={labelClass}>Password</label>
+            <input
+              id="user-password"
+              type="password"
+              autoComplete="new-password"
+              className={fieldClass}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={8}
+              required
+            />
+            <p className="mt-1 text-xs text-subtle">At least 8 characters; avoid common passwords or ones close to the name or email.</p>
+          </div>
+        )}
 
         <div>
           <label htmlFor="user-role" className={labelClass}>Role</label>
-          <select id="user-role" className={fieldClass} value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
+          <select
+            id="user-role"
+            className={fieldClass}
+            value={role}
+            onChange={(e) => setRole(e.target.value as UserRole)}
+            disabled={isSelf}
+          >
             {ROLES.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </select>
+          {isSelf ? <p className="mt-1 text-xs text-subtle">You cannot change your own role.</p> : null}
         </div>
+
+        {editing && !isSelf ? (
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />
+            Active (can sign in)
+          </label>
+        ) : null}
       </form>
     </Modal>
   )

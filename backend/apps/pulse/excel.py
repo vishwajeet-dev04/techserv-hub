@@ -206,8 +206,23 @@ def parse_opportunity_row(raw, headers: dict[str, int]) -> dict | None:
     }
 
 
+def contact_sheet(workbook) -> Worksheet | None:
+    return find_sheet(workbook, 'contact')
+
+
+def opportunity_sheet(workbook) -> Worksheet:
+    found = find_sheet(workbook, 'lead - deal', 'lead', 'pipeline', 'opportunit')
+    if found is not None:
+        return found
+    contacts = contact_sheet(workbook)
+    for name in workbook.sheetnames:
+        if contacts is None or name != contacts.title:
+            return workbook[name]
+    return workbook[workbook.sheetnames[0]]
+
+
 def load_contacts_from_workbook(workbook) -> list[tuple[int, dict]]:
-    sheet = find_sheet(workbook, 'contact') or workbook[workbook.sheetnames[0]]
+    sheet = contact_sheet(workbook) or workbook[workbook.sheetnames[0]]
     rows: list[tuple[int, dict]] = []
     for excel_row, raw, headers in iter_data_rows(sheet):
         parsed = parse_contact_row(raw, headers)
@@ -217,7 +232,7 @@ def load_contacts_from_workbook(workbook) -> list[tuple[int, dict]]:
 
 
 def load_opportunities_from_workbook(workbook) -> list[tuple[int, dict]]:
-    sheet = find_sheet(workbook, 'lead - deal', 'lead', 'pipeline') or workbook[workbook.sheetnames[0]]
+    sheet = opportunity_sheet(workbook)
     rows: list[tuple[int, dict]] = []
     for excel_row, raw, headers in iter_data_rows(sheet):
         parsed = parse_opportunity_row(raw, headers)

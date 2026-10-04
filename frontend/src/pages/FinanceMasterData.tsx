@@ -28,6 +28,7 @@ import type {
   FinanceVendor,
   MasterDataListParams,
   PaginatedResponse,
+  ImportModule,
   PulseImportResult,
 } from '../types'
 
@@ -82,6 +83,7 @@ interface MasterConfig<T extends MasterRow> {
   exportFile: () => Promise<Blob>
   templateFile: () => Promise<Blob>
   importFile: (file: File) => Promise<PulseImportResult>
+  importModule: ImportModule
   sections: { title: string; fields: FieldDef[] }[]
   columns: Column<T>[]
   cardSubtitle: (row: T) => string
@@ -402,6 +404,8 @@ function MasterDataPage<T extends MasterRow>({ config }: { config: MasterConfig<
               onImport={config.importFile}
               onImported={() => void invalidate()}
               readOnly={!canWrite}
+              module={config.importModule}
+              label={config.title}
             />
             {addButton}
           </>
@@ -644,6 +648,7 @@ const clientConfig: MasterConfig<FinanceClient> = {
   exportFile: financeApi.exportClients,
   templateFile: financeApi.clientTemplate,
   importFile: financeApi.importClients,
+  importModule: 'MASTER_CLIENTS',
   sections: [
     {
       title: 'Basic',
@@ -704,6 +709,7 @@ const vendorConfig: MasterConfig<FinanceVendor> = {
   exportFile: financeApi.exportVendors,
   templateFile: financeApi.vendorTemplate,
   importFile: financeApi.importVendors,
+  importModule: 'MASTER_VENDORS',
   sections: [
     {
       title: 'Basic',

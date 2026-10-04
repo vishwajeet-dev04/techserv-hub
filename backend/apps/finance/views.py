@@ -6,6 +6,8 @@ from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.audit.imports import record_import
+from apps.audit.models import ImportModule
 from apps.pulse.views import _read_upload, _xlsx_response
 from .models import FinancialPeriod, FinancialDocument, FinancialMetric, MisUpload
 from .models import CapitalEntry, CashflowAccount, CashflowEntry, ComplianceItem, Invoice, Payable, PurchaseOrder
@@ -480,6 +482,7 @@ def clients_import(request):
     if error is not None:
         return error
     result = master_excel.import_clients_xlsx(content)
+    record_import(request, ImportModule.MASTER_CLIENTS, content, result)
     logger.info(
         'Finance clients imported created=%s updated=%s errors=%s user=%s',
         result['created'], result['updated'], len(result['errors']), request.user.id,
@@ -507,6 +510,7 @@ def vendors_import(request):
     if error is not None:
         return error
     result = master_excel.import_vendors_xlsx(content)
+    record_import(request, ImportModule.MASTER_VENDORS, content, result)
     logger.info(
         'Finance vendors imported created=%s updated=%s errors=%s user=%s',
         result['created'], result['updated'], len(result['errors']), request.user.id,

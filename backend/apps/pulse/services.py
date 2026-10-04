@@ -32,12 +32,21 @@ from apps.pulse.excel import (
     build_contact_workbook,
     build_opportunity_workbook,
     contact_export_row,
+    contact_sheet,
     dummy_contact_rows,
     dummy_opportunity_rows,
     load_contacts_from_workbook,
     load_opportunities_from_workbook,
     open_upload,
     opportunity_export_row,
+    opportunity_sheet,
+)
+from apps.pulse.matching import (
+    CompanyResolver,
+    ContactIndex,
+    OwnerMatcher,
+    is_blank_value,
+    norm_text,
 )
 from apps.pulse.models import (
     Opportunity,
@@ -126,9 +135,12 @@ class PulseService:
     def get_contact(self, pk) -> PulseContact:
         return self.contacts.get(pk)
 
-    def create_contact(self, *, company_name: str, strict: bool = True, created_at=None, **fields) -> PulseContact:
+    def create_contact(
+        self, *, company_name: str, strict: bool = True, created_at=None, company=None, **fields
+    ) -> PulseContact:
         payload = self._contact_payload(company_name=company_name, strict=strict, **fields)
-        company = self.companies.get_or_create_by_name(payload.pop('company_name'))
+        company_label = payload.pop('company_name')
+        company = company or self.companies.get_or_create_by_name(company_label)
         instance = self.contacts.create(company=company, **payload)
         if created_at:
             PulseContact.objects.filter(pk=instance.pk).update(created_at=created_at)
@@ -1183,32 +1195,225 @@ class PulseService:
 
     def import_contacts_xlsx(self, content: bytes) -> dict:
         workbook = open_upload(content)
-        created = 0
-        errors = []
-        for excel_row, payload in load_contacts_from_workbook(workbook):
-            created_at = payload.pop('created_at', None)
-            try:
-                self.create_contact(strict=True, created_at=created_at, **payload)
-                created += 1
-            except DrfValidationError as exc:
-                errors.append({'row': excel_row, 'message': _flatten_error(exc)})
-        return {'created': created, 'errors': errors}
+        sheet = contact_sheet(workbook) or workbook[workbook.sheetnames[0]]
+        errors: list[dict] = []
+        created, updated = self._upsert_contacts(
+            load_contacts_from_workbook(workbook),
+            strict=True,
+            companies=CompanyResolver(),
+            contacts=ContactIndex(),
+            errors=errors,
+            sheet=sheet.title,
+        )
+        return {'created': created, 'updated': updated, 'errors': errors, 'warnings': []}
 
     def import_opportunities_xlsx(self, content: bytes) -> dict:
+        """Import a pipeline workbook: its Contact sheet first (if any), then the Lead - Deal rows.
+
+        Missing contacts/companies are created, 'Assigned To' is matched loosely (unmatched rows stay
+        unassigned with the name kept), and rows whose Prospect Number already exists are updated.
+        """
         workbook = open_upload(content)
-        created = 0
-        errors = []
+        companies = CompanyResolver()
+        contacts = ContactIndex()
+        owners = OwnerMatcher()
+        errors: list[dict] = []
+        warnings: list[dict] = []
+        unmatched: dict[str, str] = {}
+        contacts_created = 0
+
+        contacts_sheet = contact_sheet(workbook)
+        if contacts_sheet is not None:
+            contacts_created, _ = self._upsert_contacts(
+                load_contacts_from_workbook(workbook),
+                strict=False,
+                companies=companies,
+                contacts=contacts,
+                errors=errors,
+                sheet=contacts_sheet.title,
+            )
+
+        created = updated = 0
+        opp_sheet = opportunity_sheet(workbook)
         for excel_row, payload in load_opportunities_from_workbook(workbook):
+            row_warnings: list[str] = []
             try:
-                if not payload.get('currency'):
-                    payload['currency'] = 'INR'
-                if not payload.get('expected_close_date'):
-                    payload['expected_close_date'] = timezone.localdate() + timedelta(days=90)
-                self.create_opportunity(strict=True, **payload)
-                created += 1
+                with transaction.atomic():
+                    outcome, new_contact = self._import_opportunity_row(
+                        payload,
+                        companies=companies,
+                        contacts=contacts,
+                        owners=owners,
+                        row_warnings=row_warnings,
+                        unmatched=unmatched,
+                    )
             except DrfValidationError as exc:
-                errors.append({'row': excel_row, 'message': _flatten_error(exc)})
-        return {'created': created, 'errors': errors}
+                companies.discard()
+                contacts.discard()
+                errors.append({'row': excel_row, 'sheet': opp_sheet.title, 'message': _flatten_error(exc)})
+                continue
+            companies.commit()
+            contacts.commit()
+            created += outcome == 'created'
+            updated += outcome == 'updated'
+            contacts_created += new_contact
+            warnings.extend(
+                {'row': excel_row, 'sheet': opp_sheet.title, 'message': message} for message in row_warnings
+            )
+        return {
+            'created': created,
+            'updated': updated,
+            'contacts_created': contacts_created,
+            'errors': errors,
+            'warnings': warnings,
+            'unmatched_assignees': sorted(unmatched.values(), key=str.casefold),
+        }
+
+    CONTACT_FILL_FIELDS = (
+        'designation', 'department', 'email', 'company_email', 'phone',
+        'address_1', 'city', 'state', 'country', 'gst_number',
+    )
+
+    def _upsert_contacts(
+        self, rows, *, strict: bool, companies: CompanyResolver, contacts: ContactIndex, errors: list, sheet: str
+    ) -> tuple[int, int]:
+        created = updated = 0
+        for excel_row, payload in rows:
+            created_at = payload.pop('created_at', None)
+            existing = contacts.find(payload.get('company_name', ''), payload.get('name', ''))
+            try:
+                with transaction.atomic():
+                    if existing:
+                        if self._fill_contact_blanks(existing, payload):
+                            updated += 1
+                        continue
+                    self._contact_payload(strict=strict, **payload)
+                    company = companies.get_or_create(payload['company_name'])
+                    contact = self.create_contact(
+                        strict=strict, created_at=created_at, company=company, **payload
+                    )
+                    contacts.add(contact)
+                    created += 1
+            except DrfValidationError as exc:
+                companies.discard()
+                contacts.discard()
+                errors.append({'row': excel_row, 'sheet': sheet, 'message': _flatten_error(exc)})
+                continue
+            companies.commit()
+            contacts.commit()
+        return created, updated
+
+    def _fill_contact_blanks(self, instance: PulseContact, payload: dict) -> bool:
+        incoming = self._contact_payload(
+            company_name=instance.company.name,
+            strict=False,
+            name=instance.name,
+            **{field: payload.get(field) for field in self.CONTACT_FILL_FIELDS},
+        )
+        changed = False
+        for field in self.CONTACT_FILL_FIELDS:
+            value = incoming.get(field)
+            if is_blank_value(getattr(instance, field)) and not is_blank_value(value):
+                setattr(instance, field, value)
+                changed = True
+        if changed:
+            self.contacts.save(instance)
+        return changed
+
+    def _import_opportunity_row(
+        self,
+        payload: dict,
+        *,
+        companies: CompanyResolver,
+        contacts: ContactIndex,
+        owners: OwnerMatcher,
+        row_warnings: list[str],
+        unmatched: dict[str, str],
+    ) -> tuple[str, bool]:
+        raw_owner = (payload.pop('owner_name', '') or '').strip()
+        company_name = (payload.pop('company_name', '') or '').strip()
+        contact_name = (payload.pop('contact_name', '') or '').strip()
+        name = payload.pop('name', '')
+        if not payload.get('currency'):
+            payload['currency'] = 'INR'
+        if not payload.get('expected_close_date'):
+            payload['expected_close_date'] = timezone.localdate() + timedelta(days=90)
+
+        owner = owners.match(raw_owner) if raw_owner else None
+        if raw_owner and not owner:
+            unmatched.setdefault(norm_text(raw_owner), raw_owner)
+            row_warnings.append(f'Assigned To "{raw_owner}" does not match a user; imported as unassigned.')
+        elif not raw_owner:
+            row_warnings.append('Assigned To is empty; imported as unassigned.')
+        owner_label = owner.name if owner else (raw_owner or PLACEHOLDER)
+        clean = self._opportunity_payload(name=name, owner_name=owner_label, strict=True, **payload)
+
+        if not company_name:
+            raise DrfValidationError({'company_name': 'Company name is required.'})
+        if not contact_name:
+            raise DrfValidationError({'contact_name': 'Contact Names is required.'})
+        contact = contacts.find(company_name, contact_name)
+        new_contact = False
+        if contact is None:
+            company = companies.get_or_create(company_name)
+            contact = self.create_contact(
+                company_name=company.name, name=contact_name, strict=False, company=company
+            )
+            contacts.add(contact)
+            new_contact = True
+            row_warnings.append(f'Created contact "{contact_name}" at "{company.name}".')
+
+        prospect = clean.pop('prospect_number')
+        existing = (
+            Opportunity.objects.filter(prospect_number__iexact=prospect).first() if prospect else None
+        )
+        if existing is None:
+            opportunity = self.opportunities.create(
+                prospect_number=prospect or self.next_prospect_number(),
+                company=contact.company,
+                contact=contact,
+                owner=owner,
+                **clean,
+            )
+            self._sync_opportunity_date_reminders(opportunity)
+            return 'created', new_contact
+
+        previous_follow_up = existing.follow_up_date
+        previous_close = existing.expected_close_date
+        clean.pop('department', None)
+        if existing.stage in TERMINAL_STAGES and clean['stage'] != existing.stage:
+            row_warnings.append(f'Kept final stage {existing.stage} (sheet says {clean["stage"]}).')
+            clean['stage'] = existing.stage
+            clean['status'] = existing.status
+        if owner is None and existing.owner_id:
+            owner = existing.owner
+            clean['owner_name'] = existing.owner_name
+        for key, value in clean.items():
+            setattr(existing, key, value)
+        existing.company = contact.company
+        existing.contact = contact
+        existing.owner = owner
+        saved = self.opportunities.save(existing)
+        self._sync_opportunity_date_reminders(
+            saved, previous_follow_up=previous_follow_up, previous_close=previous_close
+        )
+        return 'updated', new_contact
+
+    def link_unassigned_opportunities(self, user) -> int:
+        """Attach imported, unassigned opportunities whose Assigned To text matches this user's name."""
+        if not user.is_active or not norm_text(user.name):
+            return 0
+        wanted = norm_text(user.name)
+        ids = [
+            pk
+            for pk, owner_name in Opportunity.objects.filter(
+                owner__isnull=True, status__in=['OPEN', 'WON']
+            ).values_list('pk', 'owner_name')
+            if norm_text(owner_name) == wanted
+        ]
+        if not ids:
+            return 0
+        return Opportunity.objects.filter(pk__in=ids).update(owner=user, owner_name=user.name)
 
     def send_due_opportunity_date_reminders(self, *, as_of_date=None):
         from apps.pulse.reminder_emails import send_due_opportunity_date_reminders

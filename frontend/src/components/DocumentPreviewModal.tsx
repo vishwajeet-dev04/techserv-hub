@@ -29,8 +29,6 @@ type PreviewData = { kind: 'table'; rows: string[][] } | { kind: 'text'; text: s
 type FileKind = 'image' | 'pdf' | 'csv' | 'xlsx' | 'docx' | 'other'
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']
-const MAX_PREVIEW_ROWS = 200
-
 function extensionOf(fileName: string): string {
   const idx = fileName.lastIndexOf('.')
   return idx >= 0 ? fileName.slice(idx + 1).toLowerCase() : ''
@@ -51,48 +49,6 @@ function formatBytes(size?: number): string {
   if (size < 1024) return `${size} B`
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
   return `${(size / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = []
-  let field = ''
-  let row: string[] = []
-  let inQuotes = false
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i]
-    if (inQuotes) {
-      if (char === '"') {
-        if (text[i + 1] === '"') {
-          field += '"'
-          i++
-        } else {
-          inQuotes = false
-        }
-      } else {
-        field += char
-      }
-      continue
-    }
-    if (char === '"') {
-      inQuotes = true
-    } else if (char === ',') {
-      row.push(field)
-      field = ''
-    } else if (char === '\n' || char === '\r') {
-      if (char === '\r' && text[i + 1] === '\n') i++
-      row.push(field)
-      rows.push(row)
-      row = []
-      field = ''
-    } else {
-      field += char
-    }
-  }
-  if (field.length > 0 || row.length > 0) {
-    row.push(field)
-    rows.push(row)
-  }
-  return rows
 }
 
 function FallbackMessage({ text, compact }: { text: string; compact?: boolean }) {
@@ -129,17 +85,9 @@ export function DocumentPreviewBody({
     setPreviewLoading(true)
     ;(async () => {
       try {
-        if (kind === 'csv') {
-          const res = await fetch(file.url as string)
-          if (!res.ok) throw new Error('Could not fetch CSV file.')
-          const text = await res.text()
-          if (cancelled) return
-          setPreviewData({ kind: 'table', rows: parseCsv(text).slice(0, MAX_PREVIEW_ROWS) })
-        } else {
-          const data = await pulseApi.previewAttachment(file.id)
-          if (cancelled) return
-          setPreviewData(data)
-        }
+        const data = await pulseApi.previewAttachment(file.id)
+        if (cancelled) return
+        setPreviewData(data)
       } catch {
         if (!cancelled) setPreviewError(true)
       } finally {

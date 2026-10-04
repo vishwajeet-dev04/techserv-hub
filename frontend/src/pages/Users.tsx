@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getErrorMessage } from '../api/errors'
-import { usersApi } from '../api/users'
+import { usersApi, type UserStatusFilter } from '../api/users'
 import { useAuth } from '../hooks/useAuth'
 import { notify } from '../lib/notify'
 import type { User, UserRole } from '../types'
 import UserFormModal from '../components/UserFormModal'
+import SetPasswordModal from '../components/SetPasswordModal'
+import ConfirmActionModal from '../components/ConfirmActionModal'
+import { btnRowDeleteClass, btnRowEditClass } from '../components/Modal'
 
 const PlusIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -69,14 +72,14 @@ function TableSkeleton() {
   )
 }
 
-function EmptyState() {
+function EmptyState({ filtered }: { filtered: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-20">
       <div className="w-14 h-14 bg-canvas rounded-2xl flex items-center justify-center mb-4 text-muted">
         <PeopleIcon />
       </div>
-      <p className="text-sm font-medium text-muted">No users yet</p>
-      <p className="text-xs text-muted mt-1">Add your first user to get started</p>
+      <p className="text-sm font-medium text-muted">{filtered ? 'No users match these filters' : 'No users yet'}</p>
+      <p className="text-xs text-muted mt-1">{filtered ? 'Try another status, role or search' : 'Add your first user to get started'}</p>
     </div>
   )
 }
@@ -88,6 +91,12 @@ const ROLE_FILTERS: { label: string; value: UserRole | '' }[] = [
   { label: 'Sales', value: 'SALES' },
   { label: 'Finance', value: 'FINANCE' },
   { label: 'Viewer', value: 'VIEWER' },
+]
+
+const STATUS_FILTERS: { label: string; value: UserStatusFilter }[] = [
+  { label: 'Active', value: 'active' },
+  { label: 'Inactive', value: 'inactive' },
+  { label: 'All', value: 'all' },
 ]
 
 function FilterBtn({
@@ -125,13 +134,17 @@ function RoleBadge({ role }: { role: UserRole }) {
 function UserRow({
   user,
   currentUserId,
-  onDeactivate,
-  deactivating,
+  onEdit,
+  onSetPassword,
+  onToggleActive,
+  busy,
 }: {
   user: User
   currentUserId?: string
-  onDeactivate: (id: string) => void
-  deactivating: boolean
+  onEdit: (user: User) => void
+  onSetPassword: (user: User) => void
+  onToggleActive: (user: User) => void
+  busy: boolean
 }) {
   const initials = getInitials(user.name) || 'U'
   const colorIndex = user.name.charCodeAt(0) % AVATAR_COLORS.length
@@ -145,7 +158,10 @@ function UserRow({
           <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${avatarColor} flex items-center justify-center shrink-0`}>
             <span className="text-white text-xs font-semibold">{initials}</span>
           </div>
-          <p className="text-sm font-medium text-ink">{user.name}</p>
+          <p className="text-sm font-medium text-ink">
+            {user.name}
+            {isSelf ? <span className="ml-1.5 text-xs font-normal text-subtle">(you)</span> : null}
+          </p>
         </div>
       </td>
       <td className="px-5 py-3.5">
@@ -170,17 +186,24 @@ function UserRow({
       <td className="px-5 py-3.5">
         <p className="text-sm text-muted">{formatDate(user.created_at)}</p>
       </td>
-      <td className="px-5 py-3.5 text-right">
-        {user.is_active && !isSelf ? (
-          <button
-            type="button"
-            onClick={() => onDeactivate(user.id)}
-            disabled={deactivating}
-            className="text-xs font-medium text-danger hover:text-danger/80 disabled:opacity-50"
-          >
-            Deactivate
+      <td className="px-5 py-3.5">
+        <div className="flex items-center justify-end gap-1.5 flex-wrap">
+          <button type="button" onClick={() => onEdit(user)} className={btnRowEditClass}>
+            Edit
           </button>
-        ) : null}
+          <button type="button" onClick={() => onSetPassword(user)} className={btnRowEditClass}>
+            Set password
+          </button>
+          {isSelf ? null : user.is_active ? (
+            <button type="button" onClick={() => onToggleActive(user)} disabled={busy} className={btnRowDeleteClass}>
+              Deactivate
+            </button>
+          ) : (
+            <button type="button" onClick={() => onToggleActive(user)} disabled={busy} className={btnRowEditClass}>
+              Reactivate
+            </button>
+          )}
+        </div>
       </td>
     </tr>
   )
@@ -193,10 +216,14 @@ export default function Users() {
   const [showCreate, setShowCreate] = useState(false)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState<UserRole | ''>('')
+  const [statusFilter, setStatusFilter] = useState<UserStatusFilter>('active')
+  const [editing, setEditing] = useState<User | null>(null)
+  const [passwordFor, setPasswordFor] = useState<User | null>(null)
+  const [toggling, setToggling] = useState<User | null>(null)
 
   const { data, isLoading } = useQuery({
-    queryKey: ['users', page],
-    queryFn: () => usersApi.list({ page, page_size: 20 }),
+    queryKey: ['users', page, statusFilter],
+    queryFn: () => usersApi.list({ page, page_size: 20, status: statusFilter }),
   })
 
   const users: User[] = (data?.results ?? []).filter((user) => {
@@ -209,13 +236,21 @@ export default function Users() {
     return matchesRole && matchesSearch
   })
 
-  const deactivateMutation = useMutation({
-    mutationFn: (id: string) => usersApi.deactivate(id),
-    onSuccess: async () => {
-      notify.success('User deactivated.')
+  const toggleMutation = useMutation({
+    mutationFn: async (target: User) => {
+      if (target.is_active) {
+        await usersApi.deactivate(target.id)
+      } else {
+        await usersApi.update(target.id, { is_active: true })
+      }
+    },
+    onSuccess: async (_, target) => {
+      notify.success(target.is_active ? 'User deactivated.' : 'User reactivated.')
+      setToggling(null)
       await queryClient.invalidateQueries({ queryKey: ['users'] })
     },
-    onError: (err) => notify.error(getErrorMessage(err, 'Could not deactivate user.')),
+    onError: (err, target) =>
+      notify.error(getErrorMessage(err, target.is_active ? 'Could not deactivate user.' : 'Could not reactivate user.')),
   })
 
   return (
@@ -249,6 +284,20 @@ export default function Users() {
           />
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {STATUS_FILTERS.map((filter) => (
+            <FilterBtn
+              key={filter.value}
+              label={filter.label}
+              active={statusFilter === filter.value}
+              onClick={() => {
+                setStatusFilter(filter.value)
+                setPage(1)
+              }}
+            />
+          ))}
+        </div>
+        <span className="hidden sm:block h-5 w-px bg-line" aria-hidden="true" />
+        <div className="flex items-center gap-2 flex-wrap">
           {ROLE_FILTERS.map((filter) => (
             <FilterBtn
               key={filter.label}
@@ -264,7 +313,7 @@ export default function Users() {
         {isLoading ? (
           <TableSkeleton />
         ) : !data || users.length === 0 ? (
-          <EmptyState />
+          <EmptyState filtered={statusFilter !== 'all' || Boolean(roleFilter) || Boolean(search.trim())} />
         ) : (
           <>
             <table className="w-full">
@@ -286,8 +335,10 @@ export default function Users() {
                     key={user.id}
                     user={user}
                     currentUserId={currentUser?.id}
-                    onDeactivate={(id) => deactivateMutation.mutate(id)}
-                    deactivating={deactivateMutation.isPending}
+                    onEdit={setEditing}
+                    onSetPassword={setPasswordFor}
+                    onToggleActive={setToggling}
+                    busy={toggleMutation.isPending}
                   />
                 ))}
               </tbody>
@@ -320,6 +371,31 @@ export default function Users() {
       </div>
 
       <UserFormModal open={showCreate} onClose={() => setShowCreate(false)} />
+      <UserFormModal
+        open={editing !== null}
+        user={editing}
+        isSelf={editing?.id === currentUser?.id}
+        onClose={() => setEditing(null)}
+      />
+      <SetPasswordModal open={passwordFor !== null} user={passwordFor} onClose={() => setPasswordFor(null)} />
+      <ConfirmActionModal
+        open={toggling !== null}
+        title={toggling?.is_active ? 'Deactivate user?' : 'Reactivate user?'}
+        message={
+          toggling?.is_active
+            ? 'They will be signed out and can no longer sign in. Their records stay in place.'
+            : 'They will be able to sign in again with their existing password.'
+        }
+        details={toggling ? [
+          { label: 'Name', value: toggling.name },
+          { label: 'Email', value: toggling.email },
+          { label: 'Role', value: toggling.role },
+        ] : undefined}
+        confirmLabel={toggling?.is_active ? 'Deactivate' : 'Reactivate'}
+        pending={toggleMutation.isPending}
+        onCancel={() => setToggling(null)}
+        onConfirm={() => toggling && toggleMutation.mutate(toggling)}
+      />
     </div>
   )
 }

@@ -1,9 +1,12 @@
 import apiClient from './client'
 import type { PaginatedResponse, User, UserRole } from '../types'
 
+export type UserStatusFilter = 'active' | 'inactive' | 'all'
+
 interface UserListFilters {
   page?: number
   page_size?: number
+  status?: UserStatusFilter
 }
 
 export interface UserCreatePayload {
@@ -28,5 +31,8 @@ export const usersApi = {
   },
   deactivate: async (id: string): Promise<void> => {
     await apiClient.delete(`/users/${id}/`)
+  },
+  setPassword: async (id: string, newPassword: string): Promise<void> => {
+    await apiClient.post(`/users/${id}/set-password/`, { new_password: newPassword })
   },
 }

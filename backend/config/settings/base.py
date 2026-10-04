@@ -1,8 +1,11 @@
+import sys
+import tempfile
 from pathlib import Path
 from datetime import timedelta
 
 from celery.schedules import crontab
 from decouple import config
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -86,8 +89,51 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+TESTING = len(sys.argv) > 1 and sys.argv[1] == 'test'
+
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+if TESTING:
+    MEDIA_ROOT = Path(tempfile.mkdtemp(prefix='techserv-test-media-'))
+
+
+def _azure_connection_parts(connection_string: str) -> dict:
+    parts = dict(
+        item.split('=', 1) for item in connection_string.strip().strip(';').split(';') if '=' in item
+    )
+    return {
+        'account_name': parts.get('AccountName', ''),
+        'account_key': parts.get('AccountKey', ''),
+        'endpoint_suffix': parts.get('EndpointSuffix', 'core.windows.net'),
+    }
+
+
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+}
+
+# Uploaded files go to Azure Blob when AZURE_CONTAINER is set (one private container per
+# environment, e.g. media-dev locally and media-prod on the server); otherwise MEDIA_ROOT.
+AZURE_CONTAINER = '' if TESTING else config('AZURE_CONTAINER', default='').strip()
+if AZURE_CONTAINER:
+    _azure = _azure_connection_parts(config('AZURE_CONNECTION_STRING', default=''))
+    _azure['account_name'] = config('AZURE_ACCOUNT_NAME', default='') or _azure['account_name']
+    _azure['account_key'] = config('AZURE_ACCOUNT_KEY', default='') or _azure['account_key']
+    if not (_azure['account_name'] and _azure['account_key']):
+        raise ImproperlyConfigured(
+            'AZURE_CONTAINER is set but the storage account is not: set AZURE_ACCOUNT_NAME and '
+            'AZURE_ACCOUNT_KEY, or AZURE_CONNECTION_STRING.'
+        )
+    STORAGES['default'] = {
+        'BACKEND': 'storages.backends.azure_storage.AzureStorage',
+        'OPTIONS': {
+            **_azure,
+            'azure_container': AZURE_CONTAINER,
+            'expiration_secs': config('AZURE_URL_EXPIRATION_SECS', default=3600, cast=int),
+            'overwrite_files': False,
+        },
+    }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -187,5 +233,7 @@ LOGGING = {
         'django': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
         'apps': {'handlers': ['console'], 'level': 'DEBUG', 'propagate': False},
         'celery': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
+        # The Azure SDK logs every HTTP request/response at INFO.
+        'azure': {'handlers': ['console'], 'level': 'WARNING', 'propagate': False},
     },
 }

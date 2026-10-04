@@ -695,7 +695,11 @@ class MasterDataAPITests(APITestCase):
 
         response = self._upload('/api/v1/finance/clients/import/', content)
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        self.assertEqual(response.data, {'created': 0, 'updated': 1, 'errors': []})
+        self.assertEqual(
+            {key: response.data[key] for key in ('created', 'updated', 'errors')},
+            {'created': 0, 'updated': 1, 'errors': []},
+        )
+        self.assertIn('import_log_id', response.data)
         client = FinanceClient.objects.get(name='Round Trip Ltd')
         self.assertTrue(client.msme_registered)
         self.assertEqual(client.payment_terms_days, 45)

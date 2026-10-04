@@ -1,9 +1,12 @@
 import { useRef, useState } from 'react'
 import { btnSecondaryClass } from './Modal'
+import ImportHistoryModal from './ImportHistoryModal'
+import ImportResultModal, { type ImportSummary } from './ImportResultModal'
 import { getErrorMessage } from '../api/errors'
+import { useAuth } from '../hooks/useAuth'
 import { downloadBlob } from '../lib/download'
 import { notify } from '../lib/notify'
-import type { PulseImportResult } from '../types'
+import type { ImportModule, PulseImportResult } from '../types'
 
 interface Props {
   onTemplate: () => Promise<Blob>
@@ -14,6 +17,10 @@ interface Props {
   onImported: () => void
   /** Hide Import and Template for roles that cannot write. */
   readOnly?: boolean
+  /** Enables the History button (Admin and Management) for this import type. */
+  module?: ImportModule
+  /** Heading for the import result and history dialogs, e.g. "Opportunities". */
+  label?: string
 }
 
 export default function PulseExcelBar({
@@ -24,9 +31,15 @@ export default function PulseExcelBar({
   exportName,
   onImported,
   readOnly = false,
+  module,
+  label = 'Import',
 }: Props) {
+  const { isAdmin, isManagement } = useAuth()
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
+  const [summary, setSummary] = useState<ImportSummary | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const canSeeHistory = Boolean(module) && (isAdmin || isManagement)
 
   const run = async (work: () => Promise<void>) => {
     if (busy) return
@@ -49,7 +62,7 @@ export default function PulseExcelBar({
           className={`${btnSecondaryClass} text-xs`}
           onClick={() => inputRef.current?.click()}
         >
-          Import
+          {busy ? 'Working…' : 'Import'}
         </button>
       )}
       <button
@@ -76,6 +89,11 @@ export default function PulseExcelBar({
           Template
         </button>
       )}
+      {canSeeHistory ? (
+        <button type="button" className={`${btnSecondaryClass} text-xs`} onClick={() => setHistoryOpen(true)}>
+          History
+        </button>
+      ) : null}
       <input
         ref={inputRef}
         type="file"
@@ -87,20 +105,36 @@ export default function PulseExcelBar({
           if (!file) return
           void run(async () => {
             const result = await onImport(file)
-            const extra = result.errors.length
-              ? ` ${result.errors.length} row${result.errors.length === 1 ? '' : 's'} failed.`
-              : ''
-            const updated = result.updated ? `, updated ${result.updated}` : ''
-            const message = `Imported ${result.created} row${result.created === 1 ? '' : 's'}${updated}.${extra}`
-            if (result.errors[0]) {
-              notify.info(`${message} First error (row ${result.errors[0].row}): ${result.errors[0].message}`)
+            const warnings = result.warnings ?? []
+            const unmatched = result.unmatched_assignees ?? []
+            if (!result.errors.length && !warnings.length && !unmatched.length) {
+              const updated = result.updated ? `, updated ${result.updated}` : ''
+              notify.success(`Imported ${result.created} row${result.created === 1 ? '' : 's'}${updated}.`)
             } else {
-              notify.success(message)
+              setSummary({
+                title: `${label} results`,
+                fileName: file.name,
+                created: result.created,
+                updated: result.updated,
+                contactsCreated: result.contacts_created,
+                errors: result.errors,
+                warnings,
+                unmatchedAssignees: unmatched,
+              })
             }
             onImported()
           })
         }}
       />
+      <ImportResultModal open={summary !== null} summary={summary} onClose={() => setSummary(null)} />
+      {module && canSeeHistory ? (
+        <ImportHistoryModal
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          module={module}
+          title={`${label} import history`}
+        />
+      ) : null}
     </div>
   )
 }

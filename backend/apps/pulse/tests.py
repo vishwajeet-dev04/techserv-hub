@@ -292,6 +292,34 @@ class PulseAPITests(APITestCase):
         )
         self.assertEqual(bad.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_csv_attachment_preview_is_parsed_server_side(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from apps.pulse.models import OpportunityActivityAttachment
+
+        contact = self.client.post('/api/v1/pulse/contacts/', self._contact_payload(name='Csv Contact'), format='json')
+        created = self.client.post(
+            '/api/v1/pulse/opportunities/',
+            self._opportunity_payload(contact.data['id'], name='Csv Deal', stage='Prospect'),
+            format='json',
+        )
+        csv_bytes = '\ufeffName,Amount\n"Acme, Inc",1000\nBeta,250\n'.encode('utf-8')
+        self.client.patch(
+            f'/api/v1/pulse/opportunities/{created.data["id"]}/',
+            {
+                'stage': 'Demo',
+                'follow_up_date': '2026-11-05',
+                'stage_note': 'Shared pricing sheet.',
+                'files': SimpleUploadedFile('pricing.csv', csv_bytes, content_type='text/csv'),
+            },
+            format='multipart',
+        )
+        attachment = OpportunityActivityAttachment.objects.get(file_name='pricing.csv')
+        preview = self.client.get(f'/api/v1/pulse/attachments/{attachment.id}/preview/')
+        self.assertEqual(preview.status_code, status.HTTP_200_OK, preview.data)
+        self.assertEqual(preview.data['kind'], 'table')
+        self.assertEqual(preview.data['rows'], [['Name', 'Amount'], ['Acme, Inc', '1000'], ['Beta', '250']])
+
     def test_cannot_delete_contact_with_opportunity(self):
         contact = self.client.post('/api/v1/pulse/contacts/', self._contact_payload(), format='json')
         self.client.post(
@@ -618,7 +646,7 @@ class PulseAPITests(APITestCase):
         self.assertNotIn('ID', headers)
         self.assertNotIn('Contact ID', headers)
 
-    def test_opportunity_import_requires_existing_contact(self):
+    def test_opportunity_import_creates_missing_contact(self):
         self.client.post('/api/v1/pulse/contacts/', self._contact_payload(), format='json')
         workbook = Workbook()
         sheet = workbook.active
@@ -642,9 +670,94 @@ class PulseAPITests(APITestCase):
         uploaded = SimpleUploadedFile('opps.xlsx', buffer.getvalue())
         result = self.client.post('/api/v1/pulse/opportunities/import/', {'file': uploaded}, format='multipart')
         self.assertEqual(result.status_code, status.HTTP_200_OK, result.data)
-        self.assertEqual(result.data['created'], 1)
-        self.assertEqual(len(result.data['errors']), 1)
-        self.assertEqual(Opportunity.objects.get().prospect_number, 'PRO-010')
+        self.assertEqual(result.data['created'], 2)
+        self.assertEqual(result.data['errors'], [])
+        self.assertEqual(result.data['contacts_created'], 1)
+        self.assertTrue(PulseContact.objects.filter(name='Nobody', company__name='Missing Co').exists())
+        self.assertEqual(Opportunity.objects.get(prospect_number='PRO-010').owner, self.avinash)
+
+    DEAL_HEADERS = [
+        'Prospect Number', 'Prospect Name', 'Company name', 'Contact Names',
+        'Lead Source', 'Service Pillar', 'Sub-Categories', 'Delivery Partner',
+        'Expected Amount(₹)', 'Final Negotiated Amount(₹)', 'Sales Stage', 'Assigned To',
+    ]
+
+    def _pipeline_upload(self, deal_rows, contact_rows=None):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        workbook = Workbook()
+        first = workbook.active
+        if contact_rows is not None:
+            first.title = 'Contact'
+            first.append(['Company Name', 'Contact Name', 'Designation', 'Contact Email', 'Phone', 'City'])
+            for row in contact_rows:
+                first.append(row)
+            deals = workbook.create_sheet('Lead - Deal')
+        else:
+            first.title = 'Lead - Deal'
+            deals = first
+        deals.append(self.DEAL_HEADERS)
+        for row in deal_rows:
+            deals.append(row)
+        buffer = BytesIO()
+        workbook.save(buffer)
+        return self.client.post(
+            '/api/v1/pulse/opportunities/import/',
+            {'file': SimpleUploadedFile('pipeline.xlsx', buffer.getvalue())},
+            format='multipart',
+        )
+
+    def test_opportunity_import_reads_contact_sheet_and_matches_loosely(self):
+        self.client.post('/api/v1/pulse/contacts/', self._contact_payload(), format='json')
+        result = self._pipeline_upload(
+            deal_rows=[
+                ['PRO-020', 'Loose Company', 'chavans technologies pvt. ltd.', 'sumanth  chavan',
+                 '', 'Consulting', 'Growth Advisory', '', 1000, '', 'Prospect Qualification', 'asif'],
+                ['PRO-021', 'Sheet Contact', 'Acme Corp', 'Ravi Kumar',
+                 '', 'Consulting', 'Growth Advisory', '', 2000, '', 'Prospect Qualification', 'Ghost Person'],
+                ['PRO-022', 'Email Owner', 'Acme Corp', 'Ravi Kumar',
+                 '', 'Consulting', 'Growth Advisory', '', 3000, '', 'Prospect Qualification', 'AVINASH@test.com'],
+            ],
+            contact_rows=[['Acme', 'Ravi Kumar', 'CTO', 'ravi@acme.test', '9876543210', 'Pune']],
+        )
+        self.assertEqual(result.status_code, status.HTTP_200_OK, result.data)
+        self.assertEqual(result.data['errors'], [])
+        self.assertEqual(result.data['created'], 3)
+        self.assertEqual(result.data['contacts_created'], 1)
+        self.assertEqual(result.data['unmatched_assignees'], ['Ghost Person'])
+        self.assertEqual(PulseContact.objects.filter(name__iexact='Sumanth Chavan').count(), 1)
+        ravi = PulseContact.objects.get(name='Ravi Kumar')
+        self.assertEqual(ravi.city, 'Pune')
+        loose = Opportunity.objects.get(prospect_number='PRO-020')
+        self.assertEqual(loose.owner, self.asif)
+        self.assertEqual(loose.contact.name, 'Sumanth Chavan')
+        ghost = Opportunity.objects.get(prospect_number='PRO-021')
+        self.assertIsNone(ghost.owner)
+        self.assertEqual(ghost.owner_name, 'Ghost Person')
+        self.assertEqual(ghost.contact_id, ravi.id)
+        self.assertEqual(Opportunity.objects.get(prospect_number='PRO-022').owner, self.avinash)
+        self.assertTrue(any('Ghost Person' in w['message'] for w in result.data['warnings']))
+
+    def test_opportunity_reimport_updates_by_prospect_number(self):
+        row = ['PRO-030', 'Repeat Deal', 'Repeat Co', 'Rita', '', 'Consulting', 'Growth Advisory', '',
+               1000, '', 'Prospect Qualification', 'Avinash']
+        first = self._pipeline_upload([row])
+        self.assertEqual(first.data['created'], 1, first.data)
+        row[8] = 5000
+        second = self._pipeline_upload([row])
+        self.assertEqual(second.data['created'], 0, second.data)
+        self.assertEqual(second.data['updated'], 1)
+        self.assertEqual(second.data['contacts_created'], 0)
+        self.assertEqual(Opportunity.objects.filter(prospect_number='PRO-030').count(), 1)
+        self.assertEqual(Opportunity.objects.get(prospect_number='PRO-030').expected_amount, 5000)
+
+    def test_opportunity_import_reports_every_error(self):
+        bad = ['', 'No Pillar', 'Co', 'Person', '', 'Nonsense', 'Growth Advisory', '', 10, '', 'Prospect Qualification', 'Avinash']
+        result = self._pipeline_upload([bad, list(bad), list(bad)])
+        self.assertEqual(result.data['created'], 0)
+        self.assertEqual(len(result.data['errors']), 3)
+        self.assertEqual(result.data['errors'][0]['sheet'], 'Lead - Deal')
+        self.assertFalse(PulseContact.objects.filter(name='Person').exists())
 
     def test_seed_pulse_loads_contact_sheet(self):
         workbook = Workbook()
