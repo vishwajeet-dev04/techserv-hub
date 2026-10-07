@@ -7,6 +7,7 @@ import { getErrorMessage } from '../api/errors'
 import { useAuth } from '../hooks/useAuth'
 import type { CompanyStatus, Contact, Deal, DealStage } from '../types'
 import ContactFormModal from '../components/ContactFormModal'
+import { displayPhone } from '../lib/phone'
 import DealFormModal from '../components/DealFormModal'
 
 const PlusIcon = () => (
@@ -232,7 +233,7 @@ function ContactsTable({ contacts }: { contacts: Contact[] }) {
                 )}
               </td>
               <td className="px-5 py-3.5">
-                <p className="text-sm text-ink">{contact.phone || '—'}</p>
+                <p className="text-sm text-ink">{contact.phone ? displayPhone(contact.phone) : '—'}</p>
               </td>
             </tr>
           )

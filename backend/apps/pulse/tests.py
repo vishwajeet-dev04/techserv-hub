@@ -227,10 +227,10 @@ class PulseAPITests(APITestCase):
         self.assertEqual(updated.data['prospect_number'], created.data['prospect_number'])
         activities = self.client.get(f'/api/v1/pulse/opportunities/{created.data["id"]}/activities/')
         self.assertEqual(activities.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(activities.data), 1)
-        self.assertEqual(activities.data[0]['from_stage'], 'Qualify')
-        self.assertEqual(activities.data[0]['to_stage'], 'Negotiation')
-        self.assertEqual(OpportunityActivity.objects.count(), 1)
+        stage_rows = [row for row in activities.data if row['action'] == 'STAGE_CHANGE']
+        self.assertEqual(len(stage_rows), 1)
+        self.assertEqual(stage_rows[0]['from_stage'], 'Qualify')
+        self.assertEqual(stage_rows[0]['to_stage'], 'Negotiation')
 
         fat_finger = self.client.patch(
             f'/api/v1/pulse/opportunities/{created.data["id"]}/',
@@ -751,6 +751,47 @@ class PulseAPITests(APITestCase):
         self.assertEqual(Opportunity.objects.filter(prospect_number='PRO-030').count(), 1)
         self.assertEqual(Opportunity.objects.get(prospect_number='PRO-030').expected_amount, 5000)
 
+    def test_opportunity_import_fills_blank_mandatory_fields(self):
+        headers = self.DEAL_HEADERS + ['Expected Close Date']
+        blank = ['PRO-050', '', '', '', '', '', '', '', None, '', '', '']
+        real = [
+            'PRO-051', 'Real Deal', 'Real Co', 'Ria', '', 'Consulting', 'Growth Advisory', '',
+            2500, '', 'Prospect Qualification', 'Avinash', '',
+        ]
+        result = self._upload_deals(headers, [blank, real])
+        self.assertEqual(result.status_code, status.HTTP_200_OK, result.data)
+        self.assertEqual(result.data['errors'], [])
+        self.assertEqual(result.data['created'], 2)
+        self.assertTrue(result.data['warnings'])
+        saved = Opportunity.objects.get(prospect_number='PRO-050')
+        self.assertEqual(saved.expected_amount, 0)
+        self.assertEqual(saved.service_pillar, 'NA')
+        self.assertEqual(saved.sub_category, 'NA')
+        self.assertIsNone(saved.expected_close_date)
+        self.assertEqual(saved.name, 'NA')
+        self.assertEqual(saved.company.name, 'NA')
+        self.assertEqual(saved.contact.name, 'NA')
+        self.assertEqual(saved.stage, 'Prospect')
+        self.assertIsNone(saved.owner)
+        self.assertEqual(saved.owner_name, 'NA')
+        real_row = Opportunity.objects.get(prospect_number='PRO-051')
+        self.assertEqual(real_row.expected_amount, 2500)
+        kept = self.client.patch(
+            f'/api/v1/pulse/opportunities/{saved.id}/',
+            {'name': 'Filled later', 'service_pillar': 'NA', 'sub_category': 'NA'},
+            format='json',
+        )
+        self.assertEqual(kept.status_code, status.HTTP_200_OK, kept.data)
+        saved.refresh_from_db()
+        self.assertEqual(saved.name, 'Filled later')
+        self.assertEqual(saved.service_pillar, 'NA')
+        rejected = self.client.patch(
+            f'/api/v1/pulse/opportunities/{real_row.id}/',
+            {'service_pillar': 'NA'},
+            format='json',
+        )
+        self.assertEqual(rejected.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_opportunity_import_reports_every_error(self):
         bad = ['', 'No Pillar', 'Co', 'Person', '', 'Nonsense', 'Growth Advisory', '', 10, '', 'Prospect Qualification', 'Avinash']
         result = self._pipeline_upload([bad, list(bad), list(bad)])
@@ -792,7 +833,7 @@ class PulseAPITests(APITestCase):
             call_command('seed_pulse', '--file', str(path), '--reset')
         contact = PulseContact.objects.get()
         self.assertEqual(contact.name, 'Sumanth Chavan')
-        self.assertEqual(contact.phone, '919986047767')
+        self.assertEqual(contact.phone, '+91 9986047767')
         self.assertEqual(contact.city, 'Bengaluru')
         opportunity = Opportunity.objects.get()
         self.assertEqual(opportunity.prospect_number, 'PRO-001')
@@ -800,3 +841,123 @@ class PulseAPITests(APITestCase):
         self.assertEqual(opportunity.stage, 'Win')
         self.assertEqual(opportunity.contact_id, contact.id)
         self.assertEqual(opportunity.expected_amount, 600000)
+
+    def _upload_deals(self, headers, rows):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = 'Lead - Deal'
+        sheet.append(headers)
+        for row in rows:
+            sheet.append(row)
+        buffer = BytesIO()
+        workbook.save(buffer)
+        return self.client.post(
+            '/api/v1/pulse/opportunities/import/',
+            {'file': SimpleUploadedFile('dated.xlsx', buffer.getvalue())},
+            format='multipart',
+        )
+
+    def test_opportunity_import_uses_created_date_and_reimport_updates_it(self):
+        from django.utils import timezone
+
+        headers = self.DEAL_HEADERS + ['Created Date']
+        row = [
+            'PRO-040', 'Dated Deal', 'Dated Co', 'Dina', '', 'Consulting', 'Growth Advisory', '',
+            1000, '', 'Prospect Qualification', 'Avinash', '22-08-2025',
+        ]
+        first = self._upload_deals(headers, [row])
+        self.assertEqual(first.status_code, status.HTTP_200_OK, first.data)
+        self.assertEqual(first.data['created'], 1)
+        opportunity = Opportunity.objects.get(prospect_number='PRO-040')
+        self.assertEqual(timezone.localtime(opportunity.created_at).date().isoformat(), '2025-08-22')
+        self.assertFalse(
+            OpportunityActivity.objects.filter(
+                opportunity=opportunity, action='FIELD_UPDATE',
+            ).exists()
+        )
+
+        row[-1] = '23-08-2025'
+        second = self._upload_deals(headers, [row])
+        self.assertEqual(second.data['updated'], 1, second.data)
+        opportunity.refresh_from_db()
+        self.assertEqual(timezone.localtime(opportunity.created_at).date().isoformat(), '2025-08-23')
+        logged = OpportunityActivity.objects.get(opportunity=opportunity, action='FIELD_UPDATE')
+        created_change = next(item for item in logged.changes if item['field'] == 'created_at')
+        self.assertEqual(created_change['label'], 'Created date')
+        self.assertTrue(created_change['new'].startswith('2025-08-23'))
+        self.assertEqual(logged.actor_id, self.user.id)
+
+        row[-1] = ''
+        third = self._upload_deals(headers, [row])
+        self.assertEqual(third.data['updated'], 1, third.data)
+        opportunity.refresh_from_db()
+        self.assertEqual(timezone.localtime(opportunity.created_at).date().isoformat(), '2025-08-23')
+        self.assertEqual(
+            OpportunityActivity.objects.filter(opportunity=opportunity, action='FIELD_UPDATE').count(),
+            1,
+        )
+
+    def test_only_admin_can_change_created_date(self):
+        from django.utils import timezone
+
+        contact = self.client.post('/api/v1/pulse/contacts/', self._contact_payload(), format='json')
+        created = self.client.post(
+            '/api/v1/pulse/opportunities/',
+            self._opportunity_payload(contact.data['id']),
+            format='json',
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        url = f'/api/v1/pulse/opportunities/{created.data["id"]}/created-at/'
+        denied = self.client.patch(url, {'created_at': '2025-08-22'}, format='json')
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+
+        admin = User.objects.create_user(
+            email='admin-dates@test.com',
+            name='Date Admin',
+            password='pass12345',
+            role=UserRole.ADMIN,
+        )
+        self.client.force_authenticate(admin)
+        updated = self.client.patch(url, {'created_at': '2025-08-22'}, format='json')
+        self.assertEqual(updated.status_code, status.HTTP_200_OK, updated.data)
+        opportunity = Opportunity.objects.get(pk=created.data['id'])
+        self.assertEqual(timezone.localtime(opportunity.created_at).date().isoformat(), '2025-08-22')
+        logged = OpportunityActivity.objects.get(opportunity=opportunity, action='FIELD_UPDATE')
+        self.assertEqual(logged.actor_id, admin.id)
+        self.assertEqual(logged.changes[0]['field'], 'created_at')
+        self.assertTrue(logged.changes[0]['new'].startswith('2025-08-22'))
+
+        same = self.client.patch(url, {'created_at': '2025-08-22'}, format='json')
+        self.assertEqual(same.status_code, status.HTTP_200_OK, same.data)
+        self.assertEqual(
+            OpportunityActivity.objects.filter(opportunity=opportunity, action='FIELD_UPDATE').count(),
+            1,
+        )
+
+    def test_opportunity_field_edit_is_logged_and_noop_is_not(self):
+        contact = self.client.post('/api/v1/pulse/contacts/', self._contact_payload(name='Amount Contact'), format='json')
+        created = self.client.post(
+            '/api/v1/pulse/opportunities/',
+            self._opportunity_payload(contact.data['id'], name='Amount Deal', expected_amount='1000'),
+            format='json',
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        url = f'/api/v1/pulse/opportunities/{created.data["id"]}/'
+        changed = self.client.patch(url, {'expected_amount': '5000', 'owner_name': 'Asif'}, format='json')
+        self.assertEqual(changed.status_code, status.HTTP_200_OK, changed.data)
+        logged = OpportunityActivity.objects.get(opportunity_id=created.data['id'], action='FIELD_UPDATE')
+        fields = {item['field']: item for item in logged.changes}
+        self.assertEqual(fields['expected_amount']['old'], '1000.00')
+        self.assertEqual(fields['expected_amount']['new'], '5000.00')
+        self.assertEqual(fields['owner']['old'], 'Avinash')
+        self.assertEqual(fields['owner']['new'], 'Asif')
+        self.assertEqual(logged.actor_id, self.user.id)
+
+        again = self.client.patch(url, {'expected_amount': '5000', 'name': 'Amount Deal'}, format='json')
+        self.assertEqual(again.status_code, status.HTTP_200_OK, again.data)
+        self.assertEqual(
+            OpportunityActivity.objects.filter(opportunity_id=created.data['id']).count(),
+            1,
+        )

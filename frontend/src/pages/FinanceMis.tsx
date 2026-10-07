@@ -24,14 +24,15 @@ function formatWhen(value: string) {
 }
 
 export default function FinanceMis() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, isFinance } = useAuth()
+  const canUpload = isAdmin || isFinance
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
 
   const list = useQuery({
     queryKey: ['mis-uploads'],
     queryFn: financeApi.listMisUploads,
-    enabled: isAdmin,
+    enabled: canUpload,
   })
 
   const upload = useMutation({
@@ -50,8 +51,8 @@ export default function FinanceMis() {
     onError: (err) => notify.error(getErrorMessage(err, 'Could not upload the file.')),
   })
 
-  if (!isAdmin) {
-    return <p className="p-4 sm:p-6 text-sm text-muted">MIS upload is only available for Admin.</p>
+  if (!canUpload) {
+    return <p className="p-4 sm:p-6 text-sm text-muted">MIS upload is available for Finance and Admin.</p>
   }
 
   const rows = list.data?.results ?? []

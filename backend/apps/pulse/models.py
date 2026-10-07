@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from apps.pulse.constants import HIGH_VALUE_INR, SALES_STAGES
 
@@ -99,7 +100,7 @@ class Opportunity(models.Model):
     follow_up_date = models.DateField(null=True, blank=True)
     expected_close_date = models.DateField(null=True, blank=True)
     comments = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -147,6 +148,7 @@ class OpportunityActivity(models.Model):
     to_stage = models.CharField(max_length=40, blank=True)
     note = models.TextField(blank=True)
     follow_up_date = models.DateField(null=True, blank=True)
+    changes = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

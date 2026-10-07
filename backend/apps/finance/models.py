@@ -289,6 +289,11 @@ class Invoice(models.Model):
     def __str__(self):
         return self.invoice_number
 
+    def save(self, *args, **kwargs):
+        if self.invoice_date and not self.due_date:
+            self.due_date = payable_due_date(self.invoice_date)
+        super().save(*args, **kwargs)
+
     @property
     def balance(self):
         return self.amount - self.amount_received
@@ -360,6 +365,38 @@ class PayableReminderEmailLog(models.Model):
 
     def __str__(self):
         return f'{self.offset_days}d {self.payable_id}'
+
+
+class InvoiceReminderEmailLog(models.Model):
+    """Dedup log for automated receivable due-date reminder emails."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name='reminder_email_logs',
+    )
+    offset_days = models.PositiveSmallIntegerField()
+    due_date = models.DateField()
+    recipients = models.TextField(blank=True)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'invoice_reminder_email_logs'
+        ordering = ['-sent_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['invoice', 'offset_days', 'due_date'],
+                name='uniq_invoice_reminder_email_log',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(offset_days__in=[1, 3]),
+                name='invoice_reminder_email_offset_days_valid',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.offset_days}d {self.invoice_id}'
 
 
 class CashflowEntry(models.Model):

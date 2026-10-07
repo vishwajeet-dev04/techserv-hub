@@ -66,7 +66,8 @@ export function FinancePageShell({
   updatedAt,
   children,
 }: Props) {
-  const { isAdmin } = useAuth()
+  const { isAdmin, isFinance } = useAuth()
+  const canUploadMis = isAdmin || isFinance
   const queryClient = useQueryClient()
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -105,7 +106,7 @@ export function FinancePageShell({
               <RefreshCw className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />
               Refresh Data
             </button>
-            {isAdmin ? (
+            {canUploadMis ? (
               <>
                 <button
                   type="button"

@@ -8,6 +8,7 @@ import {
 } from '../lib/pulsePresets'
 import { mergeOptionsWithRecents } from '../lib/pulseRecent'
 import { validateContactForm } from '../lib/pulseValidation'
+import { DIAL_CODES, INDIA_DIAL_CODE, splitPhone } from '../lib/phone'
 import SuggestSelect from './SuggestSelect'
 import { fieldClass, labelClass } from './Modal'
 
@@ -18,6 +19,7 @@ export const emptyContactForm = {
   department: '',
   email: '',
   company_email: '',
+  phone_country: INDIA_DIAL_CODE,
   phone: '',
   address_1: '',
   city: '',
@@ -49,7 +51,7 @@ export function contactFromRow(row: {
     department: row.department ?? '',
     email: row.email ?? '',
     company_email: row.company_email ?? '',
-    phone: row.phone ?? '',
+    ...splitPhone(row.phone),
     address_1: row.address_1 ?? '',
     city: row.city ?? '',
     state: row.state ?? '',
@@ -83,6 +85,9 @@ export function PulseContactFields({
   const countryOptions = mergeOptionsWithRecents('country', COUNTRY_PRESETS)
   const stateOptions = mergeOptionsWithRecents('state', statesForCountry(form.country))
   const cityOptions = mergeOptionsWithRecents('city', citiesForCountry(form.country))
+  const dialOptions = DIAL_CODES.some((item) => item.code === form.phone_country)
+    ? DIAL_CODES
+    : [{ code: form.phone_country, label: form.phone_country }, ...DIAL_CODES]
 
   const onCountryChange = (next: string) => {
     const mapped = countryHasLocationMap(next)
@@ -122,7 +127,35 @@ export function PulseContactFields({
       />
       <Field label="Contact Email" type="email" value={form.email} onChange={field('email')} error={errors.email} />
       <Field label="Company Email" type="email" value={form.company_email} onChange={field('company_email')} error={errors.company_email} />
-      <Field label="Phone" value={form.phone} onChange={field('phone')} error={errors.phone} />
+      <div className="grid grid-cols-[9.5rem_minmax(0,1fr)] gap-3">
+        <div>
+          <label className={labelClass} htmlFor="contact-phone-country">Country code</label>
+          <select
+            id="contact-phone-country"
+            aria-label="Country code"
+            className={fieldClass}
+            value={form.phone_country}
+            onChange={field('phone_country')}
+          >
+            {dialOptions.map((item) => (
+              <option key={item.code} value={item.code}>{item.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass} htmlFor="contact-phone-number">Phone number</label>
+          <input
+            id="contact-phone-number"
+            className={`${fieldClass}${errors.phone ? ' border-danger' : ''}`}
+            value={form.phone}
+            onChange={field('phone')}
+            inputMode="tel"
+            placeholder="9986047767"
+            aria-label="Phone number"
+          />
+          {errors.phone ? <p className="text-xs text-danger mt-1">{errors.phone}</p> : null}
+        </div>
+      </div>
       <Field label="Address_1" value={form.address_1} onChange={field('address_1')} />
       <SuggestSelect
         label="Country*"

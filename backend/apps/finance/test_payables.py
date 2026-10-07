@@ -11,7 +11,8 @@ from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from apps.finance.models import Payable, PayableReminderEmailLog, PayableStatus
+from apps.finance.invoice_reminders import send_invoice_due_reminders
+from apps.finance.models import Invoice, InvoiceStatus, Payable, PayableReminderEmailLog, PayableStatus
 from apps.finance.payable_reminders import reminder_recipients, send_payable_due_reminders
 from apps.users.models import User, UserRole
 
@@ -148,3 +149,51 @@ class PayableReminderTests(TestCase):
         _payable(due_date=date(2026, 10, 1) + timedelta(days=1))
         call_command('send_payable_due_reminders', '--as-of', '2026-10-01', verbosity=0)
         self.assertEqual(len(mail.outbox), 1)
+
+
+def _invoice(**overrides) -> Invoice:
+    defaults = {
+        'invoice_number': 'INV-1',
+        'customer_name': 'Acme',
+        'amount': Decimal('2500'),
+        'invoice_date': date(2026, 8, 5),
+        'status': InvoiceStatus.SENT,
+    }
+    defaults.update(overrides)
+    return Invoice.objects.create(**defaults)
+
+
+class InvoiceDueDateTests(TestCase):
+    def test_due_date_defaults_to_invoice_plus_30(self):
+        row = _invoice()
+        self.assertEqual(row.due_date, date(2026, 9, 4))
+
+    def test_explicit_due_date_is_kept(self):
+        row = _invoice(due_date=date(2026, 8, 20))
+        self.assertEqual(row.due_date, date(2026, 8, 20))
+
+
+class InvoiceReminderTests(TestCase):
+    def setUp(self):
+        self.today = date(2026, 9, 23)
+        User.objects.create_user(email='fin-inv@test.com', name='Fin', password='pass12345', role=UserRole.FINANCE)
+        User.objects.create_user(email='admin-inv@test.com', name='Admin', password='pass12345', role=UserRole.ADMIN)
+
+    def test_sends_three_day_and_one_day_and_skips_paid(self):
+        _invoice(invoice_number='DUE3', customer_name='Three Day', due_date=self.today + timedelta(days=3))
+        _invoice(invoice_number='DUE1', customer_name='One Day', due_date=self.today + timedelta(days=1))
+        _invoice(
+            invoice_number='PAID1',
+            customer_name='Paid Co',
+            due_date=self.today + timedelta(days=3),
+            status=InvoiceStatus.PAID,
+        )
+        result = send_invoice_due_reminders(as_of_date=self.today)
+        self.assertEqual(result.sent, 2)
+        self.assertEqual(len(mail.outbox), 2)
+        bodies = '\n'.join(message.body for message in mail.outbox)
+        self.assertIn('Three Day', bodies)
+        self.assertIn('One Day', bodies)
+        self.assertNotIn('Paid Co', bodies)
+        again = send_invoice_due_reminders(as_of_date=self.today)
+        self.assertEqual(again.sent, 0)

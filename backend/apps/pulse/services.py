@@ -37,6 +37,7 @@ from apps.pulse.excel import (
     dummy_opportunity_rows,
     load_contacts_from_workbook,
     load_opportunities_from_workbook,
+    normalize_phone,
     open_upload,
     opportunity_export_row,
     opportunity_sheet,
@@ -65,6 +66,7 @@ from apps.pulse.repositories import (
     ReminderRepository,
     UserLookupRepository,
 )
+from apps.users.models import UserRole
 
 PLACEHOLDER = '—'
 
@@ -75,6 +77,15 @@ def _as_date_or_none(value):
     if isinstance(value, str):
         return date.fromisoformat(value) if value.strip() else None
     return value or None
+
+
+IMPORT_BLANK = 'NA'
+
+
+def _choice_allowed(value: str, choices, *, allow_na: bool = False, previous: str = '') -> bool:
+    if value in choices:
+        return True
+    return value == IMPORT_BLANK and (allow_na or previous == IMPORT_BLANK)
 
 
 def _require(fields: dict[str, str], mapping: dict[str, str]) -> None:
@@ -112,7 +123,7 @@ def _valid_email(value: str, field: str, required: bool) -> str:
 
 
 def _valid_phone(value: str, field: str = 'phone') -> str:
-    text = (value or '').strip()
+    text = normalize_phone(value)
     if not text:
         raise DrfValidationError({field: 'This field is required.'})
     digits = ''.join(ch for ch in text if ch.isdigit())
@@ -214,8 +225,8 @@ class PulseService:
             },
         )
         phone_value = ''
-        if phone:
-            phone_value = _valid_phone(phone) if strict else phone[:40]
+        if phone and phone != PLACEHOLDER:
+            phone_value = _valid_phone(phone) if strict else (normalize_phone(phone) or phone)[:40]
         elif not strict:
             phone_value = PLACEHOLDER
         return {
@@ -308,6 +319,7 @@ class PulseService:
         attachment_files=None,
         **fields,
     ) -> Opportunity:
+        before = self._history_snapshot(instance)
         contact_id = fields.pop('contact', None)
         if contact_id or (company_name and contact_name):
             instance.contact = self._resolve_contact({
@@ -317,8 +329,13 @@ class PulseService:
             })
             instance.company = instance.contact.company
         merged_name = fields.get('name', instance.name)
+        allow_blank_owner = False
         if owner_id is not None:
-            owner, merged_owner = self._resolve_owner(owner_id=owner_id, owner_name='', strict=True)
+            if str(owner_id).strip() == '':
+                owner, merged_owner = None, ''
+                allow_blank_owner = True
+            else:
+                owner, merged_owner = self._resolve_owner(owner_id=owner_id, owner_name='', strict=True)
         elif owner_name is not None:
             owner, merged_owner = self._resolve_owner(owner_name=owner_name, strict=True)
         else:
@@ -331,16 +348,20 @@ class PulseService:
         uploads = list(attachment_files or [])
         if uploads and not stage_changing:
             raise DrfValidationError({'files': 'Attachments are only allowed when changing sales stage.'})
+        actor_is_admin = getattr(actor, 'role', None) == UserRole.ADMIN
         if stage_changing:
             target_stage = coerce_sales_stage(str(next_stage or ''))
-            if previous_stage in TERMINAL_STAGES:
+            admin_reopening = actor_is_admin and previous_stage in TERMINAL_STAGES
+            if previous_stage in TERMINAL_STAGES and not admin_reopening:
                 raise DrfValidationError({
                     'stage': f'{previous_stage} is a final stage; the sales stage can no longer change.',
                 })
-            if target_stage not in allowed_next_stages(previous_stage):
+            if not admin_reopening and target_stage not in allowed_next_stages(previous_stage):
                 raise DrfValidationError({
                     'stage': f'Sales stage can only move forward from {previous_stage}.',
                 })
+            if admin_reopening and target_stage not in SALES_STAGES:
+                raise DrfValidationError({'stage': 'Select a valid sales stage.'})
             note = (stage_change_note if stage_change_note is not None else fields.get('stage_note') or '').strip()
             follow_up = fields.get('follow_up_date', instance.follow_up_date)
             if not note:
@@ -366,11 +387,14 @@ class PulseService:
             name=merged_name,
             owner_name=merged_owner,
             strict=True,
+            allow_blank_owner=allow_blank_owner,
             require_amount='expected_amount' in fields,
             require_close_date='expected_close_date' in fields,
             prospect_number=instance.prospect_number,
             service_pillar=fields.get('service_pillar', instance.service_pillar),
             sub_category=fields.get('sub_category', instance.sub_category),
+            previous_service_pillar=instance.service_pillar,
+            previous_sub_category=instance.sub_category,
             stage=fields.get('stage', instance.stage),
             expected_amount=fields.get('expected_amount', instance.expected_amount),
             negotiated_amount=fields.get('negotiated_amount', instance.negotiated_amount),
@@ -390,7 +414,7 @@ class PulseService:
         )
         follow_up_note = ''
         if follow_up_changing:
-            if previous_stage in TERMINAL_STAGES:
+            if previous_stage in TERMINAL_STAGES and not actor_is_admin:
                 raise DrfValidationError({
                     'follow_up_date': f'{previous_stage} is a final stage; the follow-up date can no longer change.',
                 })
@@ -437,7 +461,58 @@ class PulseService:
             previous_follow_up=previous_follow_up,
             previous_close=previous_close,
         )
+        logged_note = (stage_change_note or '').strip() if (stage_changing or follow_up_changing) else ''
+        self._record_field_changes(saved, before, actor=actor, ignored_comment_note=logged_note)
         return saved
+
+    def set_opportunity_created_at(self, instance: Opportunity, when, *, actor=None) -> Opportunity:
+        if when is None:
+            raise DrfValidationError({'created_at': 'Enter a valid date.'})
+        before = self._history_snapshot(instance)
+        instance.created_at = when
+        saved = self.opportunities.save(instance)
+        self._record_field_changes(saved, before, actor=actor)
+        return saved
+
+    def _history_snapshot(self, opportunity: Opportunity) -> dict:
+        return {
+            'name': opportunity.name or '',
+            'company_id': opportunity.company_id,
+            'company_name': opportunity.company.name if opportunity.company_id else '',
+            'contact_id': opportunity.contact_id,
+            'contact_name': opportunity.contact.name if opportunity.contact_id else '',
+            'owner_id': opportunity.owner_id,
+            'owner_name': opportunity.owner_name or '',
+            'lead_source': opportunity.lead_source or '',
+            'service_pillar': opportunity.service_pillar or '',
+            'sub_category': opportunity.sub_category or '',
+            'delivery_partner': opportunity.delivery_partner or '',
+            'expected_amount': opportunity.expected_amount or Decimal('0'),
+            'negotiated_amount': opportunity.negotiated_amount or Decimal('0'),
+            'currency': opportunity.currency or '',
+            'department': opportunity.department or '',
+            'expected_close_date': opportunity.expected_close_date,
+            'comments': opportunity.comments or '',
+            'created_at': opportunity.created_at,
+        }
+
+    def _record_field_changes(self, opportunity: Opportunity, before: dict, *, actor=None, ignored_comment_note: str = '') -> None:
+        after = self._history_snapshot(opportunity)
+        if ignored_comment_note:
+            after['comments'] = _comments_without_logged_note(
+                before['comments'], after['comments'], ignored_comment_note,
+            )
+        changes = _field_changes(before, after)
+        if not changes:
+            return
+        OpportunityActivity.objects.create(
+            opportunity=opportunity,
+            actor=actor,
+            action=OpportunityActivityAction.FIELD_UPDATE,
+            from_stage=opportunity.stage,
+            to_stage=opportunity.stage,
+            changes=changes,
+        )
 
     def _sync_opportunity_date_reminders(
         self,
@@ -621,7 +696,18 @@ class PulseService:
         })
 
     def _opportunity_payload(
-        self, *, name: str, owner_name: str, strict: bool, require_amount: bool = True, require_close_date: bool = True, **fields
+        self,
+        *,
+        name: str,
+        owner_name: str,
+        strict: bool,
+        require_amount: bool = True,
+        require_close_date: bool = True,
+        allow_na: bool = False,
+        allow_blank_owner: bool = False,
+        previous_service_pillar: str = '',
+        previous_sub_category: str = '',
+        **fields,
     ) -> dict:
         prospect_name = (name or '').strip()
         assigned = (owner_name or '').strip()
@@ -641,29 +727,29 @@ class PulseService:
                 sub = 'Resources'
             if stage not in SALES_STAGES:
                 stage = SALES_STAGES[0]
-        _require(
-            {
-                'name': prospect_name,
-                'owner_name': assigned,
-                'service_pillar': pillar,
-                'sub_category': sub,
-                'stage': stage,
-            },
-            {
-                'name': 'Prospect name',
-                'owner_name': 'Assigned to',
-                'service_pillar': 'Service pillar',
-                'sub_category': 'Sub-category',
-                'stage': 'Sales stage',
-            },
-        )
+        required = {
+            'name': prospect_name,
+            'service_pillar': pillar,
+            'sub_category': sub,
+            'stage': stage,
+        }
+        labels = {
+            'name': 'Prospect name',
+            'service_pillar': 'Service pillar',
+            'sub_category': 'Sub-category',
+            'stage': 'Sales stage',
+        }
+        if not allow_blank_owner:
+            required['owner_name'] = assigned
+            labels['owner_name'] = 'Assigned to'
+        _require(required, labels)
         if amount < 0:
             raise DrfValidationError({'expected_amount': 'Expected amount is required.'})
         if strict and require_amount and amount == 0:
             raise DrfValidationError({'expected_amount': 'Expected amount is required.'})
-        if pillar not in SERVICE_PILLARS:
+        if not _choice_allowed(pillar, SERVICE_PILLARS, allow_na=allow_na, previous=previous_service_pillar):
             raise DrfValidationError({'service_pillar': 'Select a valid service pillar.'})
-        if sub not in SUB_CATEGORIES:
+        if not _choice_allowed(sub, SUB_CATEGORIES, allow_na=allow_na, previous=previous_sub_category):
             raise DrfValidationError({'sub_category': 'Select a valid sub-category.'})
         if stage not in SALES_STAGES:
             raise DrfValidationError({'stage': 'Select a valid sales stage.'})
@@ -1207,7 +1293,7 @@ class PulseService:
         )
         return {'created': created, 'updated': updated, 'errors': errors, 'warnings': []}
 
-    def import_opportunities_xlsx(self, content: bytes) -> dict:
+    def import_opportunities_xlsx(self, content: bytes, *, actor=None) -> dict:
         """Import a pipeline workbook: its Contact sheet first (if any), then the Lead - Deal rows.
 
         Missing contacts/companies are created, 'Assigned To' is matched loosely (unmatched rows stay
@@ -1246,6 +1332,7 @@ class PulseService:
                         owners=owners,
                         row_warnings=row_warnings,
                         unmatched=unmatched,
+                        actor=actor,
                     )
             except DrfValidationError as exc:
                 companies.discard()
@@ -1329,29 +1416,71 @@ class PulseService:
         owners: OwnerMatcher,
         row_warnings: list[str],
         unmatched: dict[str, str],
+        actor=None,
     ) -> tuple[str, bool]:
+        created_at = payload.pop('created_at', None)
         raw_owner = (payload.pop('owner_name', '') or '').strip()
         company_name = (payload.pop('company_name', '') or '').strip()
         contact_name = (payload.pop('contact_name', '') or '').strip()
-        name = payload.pop('name', '')
+        name = (payload.pop('name', '') or '').strip()
+        if not name:
+            name = IMPORT_BLANK
+            row_warnings.append('Prospect name was empty; saved as NA.')
+        if not company_name:
+            company_name = IMPORT_BLANK
+            row_warnings.append('Company name was empty; saved as NA.')
+        if not contact_name:
+            contact_name = IMPORT_BLANK
+            row_warnings.append('Contact name was empty; saved as NA.')
         if not payload.get('currency'):
             payload['currency'] = 'INR'
         if not payload.get('expected_close_date'):
-            payload['expected_close_date'] = timezone.localdate() + timedelta(days=90)
+            payload['expected_close_date'] = None
+            row_warnings.append('Expected close date was empty.')
+        amount = payload.get('expected_amount') or Decimal('0')
+        if not isinstance(amount, Decimal):
+            amount = Decimal(str(amount))
+        if amount == 0:
+            payload['expected_amount'] = Decimal('0')
+            row_warnings.append('Expected amount was empty; saved as 0.')
+        pillar = coerce_pillar(payload.get('service_pillar') or '')
+        if not pillar:
+            payload['service_pillar'] = IMPORT_BLANK
+            row_warnings.append('Service pillar was empty; saved as NA.')
+        else:
+            payload['service_pillar'] = pillar
+        sub = coerce_sub_category(payload.get('sub_category') or '')
+        if not sub:
+            payload['sub_category'] = IMPORT_BLANK
+            row_warnings.append('Sub-category was empty; saved as NA.')
+        else:
+            payload['sub_category'] = sub
+        stage = coerce_sales_stage(payload.get('stage') or '')
+        if stage not in SALES_STAGES:
+            payload['stage'] = SALES_STAGES[0]
+            row_warnings.append('Sales stage was empty or not recognised; saved as Prospect.')
+        else:
+            payload['stage'] = stage
 
         owner = owners.match(raw_owner) if raw_owner else None
         if raw_owner and not owner:
             unmatched.setdefault(norm_text(raw_owner), raw_owner)
             row_warnings.append(f'Assigned To "{raw_owner}" does not match a user; imported as unassigned.')
+            owner_label = raw_owner
         elif not raw_owner:
-            row_warnings.append('Assigned To is empty; imported as unassigned.')
-        owner_label = owner.name if owner else (raw_owner or PLACEHOLDER)
-        clean = self._opportunity_payload(name=name, owner_name=owner_label, strict=True, **payload)
-
-        if not company_name:
-            raise DrfValidationError({'company_name': 'Company name is required.'})
-        if not contact_name:
-            raise DrfValidationError({'contact_name': 'Contact Names is required.'})
+            row_warnings.append('Assigned To is empty; saved as NA and left unassigned.')
+            owner_label = IMPORT_BLANK
+        else:
+            owner_label = owner.name
+        clean = self._opportunity_payload(
+            name=name,
+            owner_name=owner_label,
+            strict=True,
+            require_amount=False,
+            require_close_date=False,
+            allow_na=True,
+            **payload,
+        )
         contact = contacts.find(company_name, contact_name)
         new_contact = False
         if contact is None:
@@ -1368,16 +1497,20 @@ class PulseService:
             Opportunity.objects.filter(prospect_number__iexact=prospect).first() if prospect else None
         )
         if existing is None:
+            create_fields = dict(clean)
+            if created_at is not None:
+                create_fields['created_at'] = created_at
             opportunity = self.opportunities.create(
                 prospect_number=prospect or self.next_prospect_number(),
                 company=contact.company,
                 contact=contact,
                 owner=owner,
-                **clean,
+                **create_fields,
             )
             self._sync_opportunity_date_reminders(opportunity)
             return 'created', new_contact
 
+        before = self._history_snapshot(existing)
         previous_follow_up = existing.follow_up_date
         previous_close = existing.expected_close_date
         clean.pop('department', None)
@@ -1393,10 +1526,13 @@ class PulseService:
         existing.company = contact.company
         existing.contact = contact
         existing.owner = owner
+        if created_at is not None:
+            existing.created_at = created_at
         saved = self.opportunities.save(existing)
         self._sync_opportunity_date_reminders(
             saved, previous_follow_up=previous_follow_up, previous_close=previous_close
         )
+        self._record_field_changes(saved, before, actor=actor)
         return 'updated', new_contact
 
     def link_unassigned_opportunities(self, user) -> int:
@@ -1419,6 +1555,85 @@ class PulseService:
         from apps.pulse.reminder_emails import send_due_opportunity_date_reminders
 
         return send_due_opportunity_date_reminders(as_of_date=as_of_date)
+
+
+def _comments_without_logged_note(old: str, new: str, note: str) -> str:
+    """Stage and follow-up notes are copied onto comments; that copy is not a separate field edit."""
+    note = (note or '').strip()
+    old = old or ''
+    new = new or ''
+    if not note:
+        return new
+    if not old and new == note:
+        return old
+    if old and new == f'{old}\n{note}':
+        return old
+    return new
+
+
+def _history_text(kind: str, value) -> str:
+    if value is None or value == '':
+        return ''
+    if kind == 'datetime':
+        moment = value
+        if timezone.is_naive(moment):
+            moment = timezone.make_aware(moment, timezone.get_current_timezone())
+        return timezone.localtime(moment).isoformat()
+    if kind == 'date':
+        return value.isoformat()
+    if kind == 'money':
+        return format(Decimal(value).quantize(Decimal('0.01')), 'f')
+    return str(value)
+
+
+def _values_differ(kind: str, old, new) -> bool:
+    if kind == 'money':
+        left = Decimal(old or 0).quantize(Decimal('0.01'))
+        right = Decimal(new or 0).quantize(Decimal('0.01'))
+        return left != right
+    if kind == 'text':
+        return (old or '') != (new or '')
+    return old != new
+
+
+def _field_changes(before: dict, after: dict) -> list[dict]:
+    changes = []
+
+    def add(field: str, label: str, kind: str, old, new):
+        if not _values_differ(kind, old, new):
+            return
+        changes.append({
+            'field': field,
+            'label': label,
+            'old': _history_text(kind, old),
+            'new': _history_text(kind, new),
+        })
+
+    for field, label in (
+        ('name', 'Name'),
+        ('lead_source', 'Lead source'),
+        ('service_pillar', 'Service pillar'),
+        ('sub_category', 'Sub-category'),
+        ('delivery_partner', 'Delivery partner'),
+        ('currency', 'Currency'),
+        ('department', 'Department'),
+        ('comments', 'Notes'),
+    ):
+        add(field, label, 'text', before.get(field), after.get(field))
+    for field, label in (
+        ('expected_amount', 'Expected amount'),
+        ('negotiated_amount', 'Negotiated amount'),
+    ):
+        add(field, label, 'money', before.get(field), after.get(field))
+    add('expected_close_date', 'Expected close date', 'date', before.get('expected_close_date'), after.get('expected_close_date'))
+    add('created_at', 'Created date', 'datetime', before.get('created_at'), after.get('created_at'))
+    if before.get('company_id') != after.get('company_id') or (before.get('company_name') or '') != (after.get('company_name') or ''):
+        add('company', 'Company', 'text', before.get('company_name'), after.get('company_name'))
+    if before.get('contact_id') != after.get('contact_id') or (before.get('contact_name') or '') != (after.get('contact_name') or ''):
+        add('contact', 'Contact', 'text', before.get('contact_name'), after.get('contact_name'))
+    if before.get('owner_id') != after.get('owner_id') or (before.get('owner_name') or '') != (after.get('owner_name') or ''):
+        add('owner', 'Owner', 'text', before.get('owner_name'), after.get('owner_name'))
+    return changes
 
 
 def _flatten_error(exc: DrfValidationError) -> str:

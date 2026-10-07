@@ -21,7 +21,8 @@ from apps.pulse.serializers import (
 )
 from apps.pulse.services import pulse_service
 from apps.users.models import UserRole
-from common.permissions.roles import IsSalesOrAbove
+from apps.pulse.excel import as_datetime
+from common.permissions.roles import IsAdmin, IsSalesOrAbove
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +193,20 @@ class OpportunityDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_destroy(self, instance):
         pulse_service.delete_opportunity(instance)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated, IsAdmin])
+def opportunity_created_at(request, pk):
+    try:
+        opportunity = pulse_service.get_opportunity(pk)
+    except Opportunity.DoesNotExist as exc:
+        raise Http404('Opportunity not found.') from exc
+    when = as_datetime(request.data.get('created_at'))
+    if when is None:
+        return Response({'created_at': 'Enter a valid date.'}, status=status.HTTP_400_BAD_REQUEST)
+    updated = pulse_service.set_opportunity_created_at(opportunity, when, actor=request.user)
+    return Response(OpportunitySerializer(updated, context={'request': request}).data)
 
 
 @api_view(['POST'])
@@ -485,7 +500,7 @@ def opportunities_import(request):
     content, error = _read_upload(request)
     if error is not None:
         return error
-    result = pulse_service.import_opportunities_xlsx(content)
+    result = pulse_service.import_opportunities_xlsx(content, actor=request.user)
     record_import(request, ImportModule.PULSE_OPPORTUNITIES, content, result)
     logger.info(
         'Pulse opportunities imported created=%s updated=%s contacts_created=%s errors=%s warnings=%s user=%s path=%s',

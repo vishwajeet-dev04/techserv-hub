@@ -140,14 +140,20 @@ class OpportunitySerializer(serializers.ModelSerializer):
         return super().to_internal_value(payload)
 
     def validate_service_pillar(self, value):
-        if value and value not in SERVICE_PILLARS:
-            raise serializers.ValidationError('Select a valid service pillar.')
-        return value
+        if not value or value in SERVICE_PILLARS:
+            return value
+        current = getattr(self.instance, 'service_pillar', '')
+        if value == 'NA' and current == 'NA':
+            return value
+        raise serializers.ValidationError('Select a valid service pillar.')
 
     def validate_sub_category(self, value):
-        if value and value not in SUB_CATEGORIES:
-            raise serializers.ValidationError('Select a valid sub-category.')
-        return value
+        if not value or value in SUB_CATEGORIES:
+            return value
+        current = getattr(self.instance, 'sub_category', '')
+        if value == 'NA' and current == 'NA':
+            return value
+        raise serializers.ValidationError('Select a valid sub-category.')
 
     def validate_stage(self, value):
         if not value:
@@ -198,7 +204,7 @@ class OpportunityActivitySerializer(serializers.ModelSerializer):
         model = OpportunityActivity
         fields = [
             'id', 'opportunity', 'actor', 'actor_name', 'action',
-            'from_stage', 'to_stage', 'note', 'follow_up_date', 'attachments', 'created_at',
+            'from_stage', 'to_stage', 'note', 'follow_up_date', 'changes', 'attachments', 'created_at',
         ]
         read_only_fields = fields
 

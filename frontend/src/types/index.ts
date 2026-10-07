@@ -770,6 +770,13 @@ export interface PulseOpportunityActivityAttachment {
   uploaded_by_name?: string | null
 }
 
+export interface PulseFieldChange {
+  field: string
+  label: string
+  old: string
+  new: string
+}
+
 export interface PulseOpportunityActivity {
   id: string
   opportunity: string
@@ -780,6 +787,7 @@ export interface PulseOpportunityActivity {
   to_stage: string
   note: string
   follow_up_date: string | null
+  changes?: PulseFieldChange[]
   attachments: PulseOpportunityActivityAttachment[]
   created_at: string
 }

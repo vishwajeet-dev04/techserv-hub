@@ -217,6 +217,14 @@ class InvoiceSerializer(serializers.ModelSerializer):
     def get_net_payable(self, obj):
         return float(self.get_gross_payable(obj) - float(obj.tds_amount or 0))
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        invoice_date = attrs.get('invoice_date') or getattr(self.instance, 'invoice_date', None)
+        existing_due = getattr(self.instance, 'due_date', None)
+        if invoice_date and 'due_date' not in attrs and not existing_due:
+            attrs['due_date'] = payable_due_date(invoice_date)
+        return attrs
+
 
 class PayableSerializer(serializers.ModelSerializer):
     class Meta:

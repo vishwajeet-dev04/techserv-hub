@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Eye, FileText } from 'lucide-react'
@@ -34,9 +34,10 @@ import {
 } from '../../lib/pulsePresets'
 import { rememberCustomValue, mergeOptionsWithRecents } from '../../lib/pulseRecent'
 import { notify } from '../../lib/notify'
+import { useAuth } from '../../hooks/useAuth'
 import {
-  normalizeContactForm,
   normalizeOpportunityTextFields,
+  toContactPayload,
   validateContactForm,
   validateOpportunityForm,
 } from '../../lib/pulseValidation'
@@ -80,28 +81,62 @@ const STAGE_CELL_WIDTH = 'min-w-[11.5rem] w-[11.5rem]'
 
 const PIPELINE_ORDER = ['Prospect', 'Qualify', 'Approach', 'Demo', 'Commercial', 'Negotiation']
 const TERMINAL_STAGES = ['Win', 'Lost', 'Cancelled']
+const ALL_STAGES = [...PIPELINE_ORDER, ...TERMINAL_STAGES]
 
 function isTerminalStage(stage: string) {
   return TERMINAL_STAGES.includes(stage)
 }
 
-function allowedNextStages(stage: string) {
-  if (isTerminalStage(stage)) return []
+function allowedNextStages(stage: string, isAdmin = false) {
+  if (isTerminalStage(stage)) {
+    return isAdmin ? ALL_STAGES.filter((item) => item !== stage) : []
+  }
   const index = PIPELINE_ORDER.indexOf(stage)
   const later = index >= 0 ? PIPELINE_ORDER.slice(index + 1) : PIPELINE_ORDER
   return [...later, ...TERMINAL_STAGES]
 }
 
+function AssigneeSelect({
+  ownerId,
+  ownerName,
+  assignees,
+  pending,
+  onChange,
+}: {
+  ownerId: string | null
+  ownerName: string
+  assignees: { id: string; name: string; role: string }[]
+  pending?: boolean
+  onChange: (ownerId: string) => void
+}) {
+  return (
+    <select
+      className={`${fieldClass} !py-1 !text-xs min-w-[10rem]`}
+      value={ownerId ?? ''}
+      disabled={pending}
+      aria-label="Assigned to"
+      onChange={(event) => onChange(event.target.value)}
+    >
+      <option value="">{ownerId ? 'Unassigned' : ownerName || 'Unassigned'}</option>
+      {assignees.map((user) => (
+        <option key={user.id} value={user.id}>{user.name}</option>
+      ))}
+    </select>
+  )
+}
+
 function StageBadge({
   stage,
   pending,
+  canChange,
   onOpen,
 }: {
   stage: string
   pending?: boolean
+  canChange?: boolean
   onOpen: () => void
 }) {
-  if (isTerminalStage(stage)) {
+  if (isTerminalStage(stage) && !canChange) {
     return (
       <span
         title="Final stage — cannot be changed"
@@ -122,6 +157,7 @@ function StageBadge({
       className={`inline-flex items-center justify-between gap-1 ${STAGE_CELL_WIDTH} border border-line rounded-lg px-2 py-1 text-xs text-left hover:border-brand hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 ${STAGE_STYLE[stage] ?? 'bg-canvas text-muted'}`}
     >
       <span className="truncate">{stage}</span>
+      {isTerminalStage(stage) ? <span className="text-[10px] uppercase tracking-wider opacity-70">Final</span> : null}
       <ChevronIcon />
     </button>
   )
@@ -173,6 +209,13 @@ function DocsIssueBadge({ row, onOpen }: { row: PulseOpportunity; onOpen: () => 
   )
 }
 
+function changeValue(field: string, value: string) {
+  if (!value) return '—'
+  if (field === 'created_at') return formatDate(value)
+  if (field.endsWith('_date')) return formatDate(value)
+  return value
+}
+
 function ActivityEntry({
   item,
   onPreview,
@@ -182,19 +225,30 @@ function ActivityEntry({
 }) {
   const followUpOnly = item.action === 'FOLLOW_UP_CHANGE'
   const documentsOnly = item.action === 'DOCUMENT_UPDATE'
+  const fieldUpdate = item.action === 'FIELD_UPDATE'
+  const changes = item.changes ?? []
   return (
     <div className="rounded-xl border border-line bg-canvas px-3 py-2">
       <p className="text-xs font-medium text-ink">
-        {documentsOnly
-          ? 'Documents updated'
-          : followUpOnly
-            ? `Follow-up extended to ${formatDate(item.follow_up_date)} · stays in ${item.to_stage || '—'}`
-            : `${item.from_stage || '—'} → ${item.to_stage || '—'}`}
+        {fieldUpdate
+          ? 'Updated'
+          : documentsOnly
+            ? 'Documents updated'
+            : followUpOnly
+              ? `Follow-up extended to ${formatDate(item.follow_up_date)} · stays in ${item.to_stage || '—'}`
+              : `${item.from_stage || '—'} → ${item.to_stage || '—'}`}
       </p>
       <p className="text-[11px] text-muted mt-0.5">
         {item.actor_name || 'System'} · {formatWhen(item.created_at)}
-        {!followUpOnly && !documentsOnly && item.follow_up_date ? ` · Follow-up ${formatDate(item.follow_up_date)}` : ''}
+        {!followUpOnly && !documentsOnly && !fieldUpdate && item.follow_up_date ? ` · Follow-up ${formatDate(item.follow_up_date)}` : ''}
       </p>
+      {fieldUpdate
+        ? changes.map((change) => (
+            <p key={change.field} className="text-xs text-ink mt-1">
+              {change.label}: {changeValue(change.field, change.old)} → {changeValue(change.field, change.new)}
+            </p>
+          ))
+        : null}
       {item.note ? <p className="text-xs text-ink mt-1">{item.note}</p> : null}
       <ActivityAttachments items={item.attachments} onPreview={onPreview} />
     </div>
@@ -235,6 +289,227 @@ function formatWhen(value: string) {
 function dateInput(value: string | null) {
   if (!value) return ''
   return value.slice(0, 10)
+}
+
+const NO_CLOSE_DATE = '__none__'
+
+type SortKey =
+  | 'prospect_number'
+  | 'name'
+  | 'company_name'
+  | 'contact_name'
+  | 'lead_source'
+  | 'service_pillar'
+  | 'sub_category'
+  | 'delivery_partner'
+  | 'expected_amount'
+  | 'negotiated_amount'
+  | 'stage'
+  | 'owner'
+  | 'created_at'
+  | 'updated_at'
+  | 'follow_up_date'
+  | 'expected_close_date'
+
+const SORT_COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
+  { key: 'prospect_number', label: 'Prospect Number' },
+  { key: 'name', label: 'Prospect Name' },
+  { key: 'company_name', label: 'Company' },
+  { key: 'contact_name', label: 'Contact' },
+  { key: 'lead_source', label: 'Lead Source' },
+  { key: 'service_pillar', label: 'Service Pillar' },
+  { key: 'sub_category', label: 'Sub-category' },
+  { key: 'delivery_partner', label: 'Delivery Partner' },
+  { key: 'expected_amount', label: 'Expected Amount', numeric: true },
+  { key: 'negotiated_amount', label: 'Final Negotiated', numeric: true },
+  { key: 'stage', label: 'Sales Stage' },
+  { key: 'owner', label: 'Assigned To' },
+  { key: 'created_at', label: 'Created Date' },
+  { key: 'updated_at', label: 'Updated At' },
+  { key: 'follow_up_date', label: 'Follow-up Date' },
+  { key: 'expected_close_date', label: 'Expected Close Date' },
+]
+
+function sortValue(row: PulseOpportunity, key: SortKey): string | number | null {
+  if (key === 'expected_amount' || key === 'negotiated_amount') {
+    const amount = Number(row[key])
+    return Number.isFinite(amount) ? amount : null
+  }
+  if (key === 'owner') {
+    const name = row.owner_display || row.owner_name
+    return name.trim() ? name : null
+  }
+  if (key === 'expected_close_date' || key === 'follow_up_date') {
+    return row[key]?.slice(0, 10) || null
+  }
+  const value = row[key]
+  if (value == null) return null
+  const text = String(value).trim()
+  return text || null
+}
+
+function compareRows(a: PulseOpportunity, b: PulseOpportunity, key: SortKey, direction: 'asc' | 'desc') {
+  const column = SORT_COLUMNS.find((item) => item.key === key)
+  const left = sortValue(a, key)
+  const right = sortValue(b, key)
+  const leftBlank = left == null || left === ''
+  const rightBlank = right == null || right === ''
+  if (leftBlank && rightBlank) return 0
+  if (leftBlank) return 1
+  if (rightBlank) return -1
+  const cmp = column?.numeric
+    ? Number(left) - Number(right)
+    : String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: 'base' })
+  return direction === 'desc' ? -cmp : cmp
+}
+
+function OpportunitySortMenu({
+  field,
+  direction,
+  onField,
+  onDirection,
+}: {
+  field: SortKey | ''
+  direction: 'asc' | 'desc'
+  onField: (field: SortKey | '') => void
+  onDirection: (direction: 'asc' | 'desc') => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const close = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+  const active = SORT_COLUMNS.find((item) => item.key === field)
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen((current) => !current)}
+        className={`inline-flex items-center gap-2 h-10 px-4 rounded-lg border text-sm whitespace-nowrap transition-colors ${
+          field
+            ? 'border-brand bg-brand-soft text-brand font-semibold'
+            : 'border-line bg-canvas text-ink hover:border-brand'
+        }`}
+      >
+        Sort
+        {active ? <span className="font-medium text-muted">{active.label}</span> : null}
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-full z-30 mt-2 w-60 rounded-xl border border-line bg-surface shadow-lg p-2">
+          <p className="px-2 py-1 text-[10px] uppercase tracking-wider text-subtle">Sort by</p>
+          <div className="max-h-64 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => onField('')}
+              className={`block w-full text-left px-2 py-1.5 rounded-lg text-xs ${
+                !field ? 'bg-brand-soft text-brand font-semibold' : 'text-muted hover:bg-canvas hover:text-ink'
+              }`}
+            >
+              Default order
+            </button>
+            {SORT_COLUMNS.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => onField(item.key)}
+                className={`block w-full text-left px-2 py-1.5 rounded-lg text-xs ${
+                  field === item.key ? 'bg-brand-soft text-brand font-semibold' : 'text-ink hover:bg-canvas'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-1 border-t border-line pt-2">
+            <button
+              type="button"
+              onClick={() => onDirection('asc')}
+              className={`px-2 py-1.5 rounded-lg text-xs ${
+                direction === 'asc' ? 'bg-brand-soft text-brand font-semibold' : 'text-muted hover:bg-canvas hover:text-ink'
+              }`}
+            >
+              Increase
+            </button>
+            <button
+              type="button"
+              onClick={() => onDirection('desc')}
+              className={`px-2 py-1.5 rounded-lg text-xs ${
+                direction === 'desc' ? 'bg-brand-soft text-brand font-semibold' : 'text-muted hover:bg-canvas hover:text-ink'
+              }`}
+            >
+              Decrease
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function localDateInput(value: string) {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  const month = String(parsed.getMonth() + 1).padStart(2, '0')
+  const day = String(parsed.getDate()).padStart(2, '0')
+  return `${parsed.getFullYear()}-${month}-${day}`
+}
+
+function CreatedDateCell({
+  value,
+  editing,
+  pending,
+  onEdit,
+  onCancel,
+  onSave,
+}: {
+  value: string
+  editing: boolean
+  pending: boolean
+  onEdit: () => void
+  onCancel: () => void
+  onSave: (createdAt: string) => void
+}) {
+  const [draft, setDraft] = useState(localDateInput(value))
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        className="underline decoration-dotted underline-offset-2 hover:text-ink"
+        title="Edit created date"
+        onClick={onEdit}
+      >
+        {formatWhen(value)}
+      </button>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input
+        type="date"
+        className={`${fieldClass} !py-1 !text-xs w-[9.5rem]`}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <button
+        type="button"
+        className={btnRowEditClass}
+        disabled={pending || !draft}
+        onClick={() => onSave(draft)}
+      >
+        Save
+      </button>
+      <button type="button" className={btnRowEditClass} onClick={onCancel}>
+        Cancel
+      </button>
+    </span>
+  )
 }
 
 const emptyForm = {
@@ -279,11 +554,16 @@ function formFromRow(row: PulseOpportunity) {
 
 export default function PulseOpportunities() {
   const queryClient = useQueryClient()
+  const { isAdmin } = useAuth()
   const [params] = useSearchParams()
   const [search, setSearch] = useState(params.get('search') ?? '')
   const [stageParam, setStage] = useState(params.get('stage') ?? '')
   const [pillarFilter, setPillarFilter] = useState(params.get('pillar') ?? '')
   const [ownerFilter, setOwnerFilter] = useState(params.get('owner') ?? '')
+  const [subFilter, setSubFilter] = useState(params.get('sub') ?? '')
+  const [closeFilter, setCloseFilter] = useState(params.get('close') ?? '')
+  const [sortField, setSortField] = useState<SortKey | ''>('')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [open, setOpen] = useState(false)
@@ -313,6 +593,28 @@ export default function PulseOpportunities() {
   const [docsRow, setDocsRow] = useState<PulseOpportunity | null>(null)
   const [previewFile, setPreviewFile] = useState<PreviewableFile | null>(null)
   const [stageNegotiated, setStageNegotiated] = useState('')
+  const [createdDateEditId, setCreatedDateEditId] = useState<string | null>(null)
+
+  const setCreatedAt = useMutation({
+    mutationFn: ({ id, createdAt }: { id: string; createdAt: string }) =>
+      pulseApi.setOpportunityCreatedAt(id, createdAt),
+    onSuccess: async () => {
+      setCreatedDateEditId(null)
+      await queryClient.invalidateQueries({ queryKey: ['pulse-opportunities'] })
+      await queryClient.invalidateQueries({ queryKey: ['pulse-opportunity-activities'] })
+      notify.success('Created date updated.')
+    },
+    onError: (err) => notify.error(getErrorMessage(err, 'Could not update created date.')),
+  })
+
+  const assignOwner = useMutation({
+    mutationFn: ({ id, ownerId }: { id: string; ownerId: string }) => pulseApi.assignOpportunity(id, ownerId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['pulse-opportunities'] })
+      notify.success('Assignee updated.')
+    },
+    onError: (err) => notify.error(getErrorMessage(err, 'Could not update assignee.')),
+  })
 
   const settings = useQuery({ queryKey: ['pulse-settings'], queryFn: pulseApi.settings })
   const assignees = useQuery({ queryKey: ['pulse-assignees'], queryFn: pulseApi.listAssignees })
@@ -378,7 +680,7 @@ export default function PulseOpportunities() {
   })
 
   const createContact = useMutation({
-    mutationFn: (payload: ContactFormValues) => pulseApi.createContact(payload),
+    mutationFn: (payload: Record<string, string>) => pulseApi.createContact(payload),
     onSuccess: async (created, payload) => {
       rememberCustomValue('designation', payload.designation, DESIGNATION_PRESETS)
       rememberCustomValue('department', payload.department, DEPARTMENT_PRESETS)
@@ -497,7 +799,7 @@ export default function PulseOpportunities() {
   }
 
   const openStageModal = (row: PulseOpportunity) => {
-    if (isTerminalStage(row.stage)) return
+    if (isTerminalStage(row.stage) && !isAdmin) return
     setStageConfirmOpen(false)
     setStageModal({
       id: row.id,
@@ -550,18 +852,16 @@ export default function PulseOpportunities() {
 
   const onContactSubmit = (event: FormEvent) => {
     event.preventDefault()
-    const normalized = normalizeContactForm(contactForm)
-    const errors = validateContactForm(normalized)
+    const errors = validateContactForm(contactForm)
     if (Object.keys(errors).length > 0) {
       setContactFieldErrors(errors)
       setContactError('Fix the highlighted fields.')
       return
     }
-    setContactForm(normalized)
     setContactFieldErrors({})
     if (createContact.isPending) return
     setContactError('')
-    createContact.mutate(normalized)
+    createContact.mutate(toContactPayload(contactForm))
   }
 
   const set = (key: keyof typeof emptyForm) => (event: { target: { value: string } }) => {
@@ -584,18 +884,33 @@ export default function PulseOpportunities() {
   }
 
   const rows = list.data?.results ?? []
+  const closeDates = useMemo(() => {
+    const dates = new Set<string>()
+    let blank = false
+    for (const row of rows) {
+      const iso = row.expected_close_date?.slice(0, 10) ?? ''
+      if (iso) dates.add(iso)
+      else blank = true
+    }
+    return { dates: [...dates].sort(), blank }
+  }, [rows])
   const scoped = useMemo(() => {
     return rows.filter((row) => {
       if (pillarFilter && row.service_pillar !== pillarFilter) return false
-      if (ownerFilter && row.owner !== ownerFilter && row.owner_display !== ownerFilter) return false
+      if (subFilter && row.sub_category !== subFilter) return false
+      if (ownerFilter && row.owner !== ownerFilter && row.owner_display !== ownerFilter && row.owner_name !== ownerFilter) return false
+      const closeDate = row.expected_close_date?.slice(0, 10) ?? ''
+      if (closeFilter === NO_CLOSE_DATE && closeDate) return false
+      if (closeFilter && closeFilter !== NO_CLOSE_DATE && closeDate !== closeFilter) return false
       return true
     })
-  }, [rows, pillarFilter, ownerFilter])
+  }, [rows, pillarFilter, subFilter, ownerFilter, closeFilter])
 
   const filtered = useMemo(() => {
-    if (!stage) return scoped
-    return scoped.filter((row) => row.stage === stage)
-  }, [scoped, stage])
+    const staged = stage ? scoped.filter((row) => row.stage === stage) : scoped
+    if (!sortField) return staged
+    return [...staged].sort((a, b) => compareRows(a, b, sortField, sortDir))
+  }, [scoped, stage, sortField, sortDir])
 
   const stageCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -607,7 +922,7 @@ export default function PulseOpportunities() {
 
   useEffect(() => {
     setPage(1)
-  }, [search, stage, pillarFilter, ownerFilter, pageSize])
+  }, [search, stage, pillarFilter, subFilter, ownerFilter, closeFilter, sortField, sortDir, pageSize])
 
   const pageRows = useMemo(() => {
     const start = (page - 1) * pageSize
@@ -618,6 +933,7 @@ export default function PulseOpportunities() {
     const map = new Map<string, string>()
     for (const row of rows) {
       if (row.owner) map.set(row.owner, row.owner_display || row.owner_name || row.owner)
+      else if (row.owner_name) map.set(row.owner_name, row.owner_name)
     }
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [rows])
@@ -630,6 +946,13 @@ export default function PulseOpportunities() {
   ]
   const saving = save.isPending
   const assigneeRows = assignees.data ?? []
+  const subOptions = useMemo(() => {
+    const values = new Set(subs)
+    for (const row of rows) {
+      if (row.sub_category) values.add(row.sub_category)
+    }
+    return [...values]
+  }, [subs, rows])
 
   const keepingStage = Boolean(stageModal && stageModal.to === stageModal.from)
 
@@ -643,7 +966,7 @@ export default function PulseOpportunities() {
       setStageModalError('Pick a new stage or change the follow-up date.')
       return
     }
-    if (!keepingStage && !allowedNextStages(stageModal.from).includes(stageModal.to)) {
+    if (!keepingStage && !allowedNextStages(stageModal.from, isAdmin).includes(stageModal.to)) {
       setStageModalError(`Sales stage can only move forward from ${stageModal.from}.`)
       return
     }
@@ -685,9 +1008,13 @@ export default function PulseOpportunities() {
     ? ''
     : keepingStage
       ? `Keep ${stageModal.from} and move the follow-up from ${formatDate(stageModal.followUp || null)} to ${formatDate(stageFollowUp || null)}?`
-      : isTerminalStage(stageModal.to)
-        ? `Move ${stageModal.from} to ${stageModal.to}? ${stageModal.to} is a final stage — it cannot be changed afterwards.`
-        : `Move ${stageModal.from} to ${stageModal.to}? Stages only move forward, so this cannot be undone.`
+      : isAdmin && isTerminalStage(stageModal.from) && !isTerminalStage(stageModal.to)
+        ? `Move ${stageModal.from} to ${stageModal.to}? This reopens the opportunity.`
+        : isAdmin && isTerminalStage(stageModal.from)
+          ? `Move ${stageModal.from} to ${stageModal.to}?`
+          : isTerminalStage(stageModal.to)
+            ? `Move ${stageModal.from} to ${stageModal.to}? ${stageModal.to} is a final stage — it cannot be changed afterwards.`
+            : `Move ${stageModal.from} to ${stageModal.to}? Stages only move forward, so this cannot be undone.`
 
   const stageConfirmDetails = stageModal
     ? [
@@ -747,10 +1074,28 @@ export default function PulseOpportunities() {
             <option key={item} value={item}>{item}</option>
           ))}
         </select>
+        <select value={subFilter} onChange={(e) => setSubFilter(e.target.value)} className={`${fieldClass} md:w-48`}>
+          <option value="">All Sub-Categories</option>
+          {subOptions.map((item) => (
+            <option key={item} value={item}>{item}</option>
+          ))}
+        </select>
         <select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} className={`${fieldClass} md:w-48`}>
-          <option value="">All Owners</option>
+          <option value="">All Assignees</option>
           {owners.map(([id, label]) => (
             <option key={id} value={id}>{label}</option>
+          ))}
+        </select>
+        <select
+          value={closeFilter}
+          onChange={(e) => setCloseFilter(e.target.value)}
+          aria-label="Expected close date"
+          className={`${fieldClass} md:w-52`}
+        >
+          <option value="">All Expected Close Dates</option>
+          {closeDates.blank ? <option value={NO_CLOSE_DATE}>No close date</option> : null}
+          {closeDates.dates.map((iso) => (
+            <option key={iso} value={iso}>{formatDate(iso)}</option>
           ))}
         </select>
       </PulseToolbar>
@@ -773,6 +1118,14 @@ export default function PulseOpportunities() {
           minWidth="min-w-[1700px]"
           title="Opportunities"
           count={filtered.length}
+          headerAction={
+            <OpportunitySortMenu
+              field={sortField}
+              direction={sortDir}
+              onField={setSortField}
+              onDirection={setSortDir}
+            />
+          }
           mobileCards={pageRows.map((row) => (
             <div key={row.id} className="px-4 py-3.5 space-y-2.5">
               <div className="flex items-start justify-between gap-3">
@@ -789,6 +1142,7 @@ export default function PulseOpportunities() {
                 </div>
                 <StageBadge
                   stage={row.stage}
+                  canChange={isAdmin}
                   pending={updateStage.isPending && stageModal?.id === row.id}
                   onOpen={() => openStageModal(row)}
                 />
@@ -808,9 +1162,17 @@ export default function PulseOpportunities() {
                   <dt className="text-subtle">Pillar</dt>
                   <dd className="text-muted truncate">{row.service_pillar || '—'}</dd>
                 </div>
-                <div>
-                  <dt className="text-subtle">Owner</dt>
-                  <dd className="text-muted truncate">{row.owner_display || '—'}</dd>
+                <div className="col-span-2">
+                  <dt className="text-subtle">Assigned to</dt>
+                  <dd className="mt-1">
+                    <AssigneeSelect
+                      ownerId={row.owner}
+                      ownerName={row.owner_name || row.owner_display}
+                      assignees={assigneeRows}
+                      pending={assignOwner.isPending}
+                      onChange={(ownerId) => assignOwner.mutate({ id: row.id, ownerId })}
+                    />
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-subtle">Follow-up</dt>
@@ -846,7 +1208,7 @@ export default function PulseOpportunities() {
             </div>
           ))}
           headerRight={
-            <div className="flex flex-wrap items-center gap-1.5 justify-end max-w-full">
+            <>
               <button
                 type="button"
                 onClick={() => setStage('')}
@@ -876,7 +1238,7 @@ export default function PulseOpportunities() {
                   </button>
                 )
               })}
-            </div>
+            </>
           }
           footer={
             <PulsePaginationFooter
@@ -917,12 +1279,35 @@ export default function PulseOpportunities() {
                   <td className="px-3 py-3">
                     <StageBadge
                       stage={row.stage}
+                      canChange={isAdmin}
                       pending={updateStage.isPending && stageModal?.id === row.id}
                       onOpen={() => openStageModal(row)}
                     />
                   </td>
-                  <td className="px-3 py-3 text-muted">{row.owner_display || '—'}</td>
-                  <td className="px-3 py-3 text-muted whitespace-nowrap">{formatWhen(row.created_at)}</td>
+                  <td className="px-3 py-3 text-muted">
+                    <AssigneeSelect
+                      ownerId={row.owner}
+                      ownerName={row.owner_name || row.owner_display}
+                      assignees={assigneeRows}
+                      pending={assignOwner.isPending}
+                      onChange={(ownerId) => assignOwner.mutate({ id: row.id, ownerId })}
+                    />
+                  </td>
+                  <td className="px-3 py-3 text-muted whitespace-nowrap">
+                    {isAdmin ? (
+                      <CreatedDateCell
+                        key={`${row.id}:${createdDateEditId === row.id}`}
+                        value={row.created_at}
+                        editing={createdDateEditId === row.id}
+                        pending={setCreatedAt.isPending}
+                        onEdit={() => setCreatedDateEditId(row.id)}
+                        onCancel={() => setCreatedDateEditId(null)}
+                        onSave={(createdAt) => setCreatedAt.mutate({ id: row.id, createdAt })}
+                      />
+                    ) : (
+                      formatWhen(row.created_at)
+                    )}
+                  </td>
                   <td className="px-3 py-3 text-muted whitespace-nowrap">{formatWhen(row.updated_at)}</td>
                   <td className="px-3 py-3 text-muted">{formatDate(row.follow_up_date)}</td>
                   <td className="px-3 py-3 text-muted">{formatDate(row.expected_close_date)}</td>
@@ -1042,6 +1427,7 @@ export default function PulseOpportunities() {
               <label className={labelClass}>Service Pillar*</label>
               <select className={`${fieldClass}${fieldErrors.service_pillar ? ' border-danger' : ''}`} value={form.service_pillar} onChange={set('service_pillar')} required>
                 <option value="">Select pillar</option>
+                {form.service_pillar === 'NA' && !pillars.includes('NA') ? <option value="NA">NA</option> : null}
                 {pillars.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
               <FieldHint error={fieldErrors.service_pillar} />
@@ -1050,6 +1436,7 @@ export default function PulseOpportunities() {
               <label className={labelClass}>Sub-Categories*</label>
               <select className={`${fieldClass}${fieldErrors.sub_category ? ' border-danger' : ''}`} value={form.sub_category} onChange={set('sub_category')} required>
                 <option value="">Select sub-category</option>
+                {form.sub_category === 'NA' && !subs.includes('NA') ? <option value="NA">NA</option> : null}
                 {subs.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
               <FieldHint error={fieldErrors.sub_category} />
@@ -1127,7 +1514,7 @@ export default function PulseOpportunities() {
                     <p className={labelClass}>Follow-up Date</p>
                     <p className="text-sm font-medium text-ink">{formatDate(form.follow_up_date || null)}</p>
                   </div>
-                  {isTerminalStage(form.stage) ? (
+                  {isTerminalStage(form.stage) && !isAdmin ? (
                     <p className="text-xs text-muted">Final stage — stage and follow-up are locked.</p>
                   ) : (
                     <button type="button" className={btnRowEditClass} onClick={() => openStageModal(editing)}>
@@ -1194,7 +1581,9 @@ export default function PulseOpportunities() {
               {' · '}Follow-up: <span className="font-medium text-ink">{formatDate(stageModal.followUp || null)}</span>
             </p>
             <p className="text-xs text-muted">
-              Stages only move forward. Keep the current stage to extend the follow-up date; Win, Lost and Cancelled are final.
+              {isAdmin && isTerminalStage(stageModal.from)
+                ? 'As an admin you can move this final stage to any other stage, including back into the pipeline.'
+                : 'Stages only move forward. Keep the current stage to extend the follow-up date; Win, Lost and Cancelled are final.'}
             </p>
             {stageModalError ? <p className="text-sm text-danger">{stageModalError}</p> : null}
             <div>
@@ -1209,7 +1598,7 @@ export default function PulseOpportunities() {
                 }}
               >
                 <option value={stageModal.from}>{stageModal.from} (keep — extend follow-up)</option>
-                {allowedNextStages(stageModal.from).map((item) => (
+                {allowedNextStages(stageModal.from, isAdmin).map((item) => (
                   <option key={item} value={item}>{item}</option>
                 ))}
               </select>

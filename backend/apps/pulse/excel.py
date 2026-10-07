@@ -8,7 +8,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
+from django.utils.dateparse import parse_date, parse_datetime
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
@@ -67,19 +67,70 @@ def cell_at(row, headers: dict[str, int], *names):
     return None
 
 
-def format_phone(value) -> str:
+_CALLING_CODES = tuple(sorted({
+    '1', '7', '20', '27', '30', '31', '32', '33', '34', '39', '41', '43', '44', '45', '46', '47', '48', '49',
+    '51', '52', '54', '55', '56', '57', '58', '60', '61', '62', '63', '64', '65', '66', '81', '82', '84', '86',
+    '90', '91', '92', '93', '94', '95', '98', '212', '213', '216', '234', '254', '255', '256',
+    '351', '352', '353', '354', '355', '356', '357', '358', '359', '370', '371', '372', '373', '374', '375',
+    '380', '381', '382', '385', '386', '387', '420', '421', '423', '852', '853', '855', '856', '880', '886',
+    '960', '961', '962', '963', '964', '965', '966', '967', '968', '970', '971', '972', '973', '974', '975',
+    '976', '977', '992', '993', '994', '995', '996', '998',
+}, key=len, reverse=True))
+INDIA_CALLING_CODE = '91'
+
+
+def _phone_digits(value) -> tuple[str, bool]:
     if value is None or value == '':
+        return '', False
+    if isinstance(value, float) and value.is_integer():
+        text = str(int(value))
+    elif isinstance(value, int):
+        text = str(value)
+    else:
+        text = cell_text(value)
+        if text.endswith('.0') and text[:-2].isdigit():
+            text = text[:-2]
+    stripped = text.strip()
+    explicit = stripped.startswith('+') or stripped.startswith('00')
+    digits = ''.join(ch for ch in stripped if ch.isdigit())
+    if explicit and digits.startswith('00'):
+        digits = digits[2:]
+    return digits, explicit
+
+
+def _split_calling_code(digits: str) -> tuple[str, str] | None:
+    for code in _CALLING_CODES:
+        if digits.startswith(code) and len(digits) - len(code) >= 6:
+            return code, digits[len(code):]
+    return None
+
+
+def normalize_phone(value) -> str:
+    """Store phones as '+<code> <national>'. Missing codes default to India (+91)."""
+    digits, explicit = _phone_digits(value)
+    if not digits:
         return ''
-    if isinstance(value, float):
-        if value.is_integer():
-            return str(int(value))
-        return str(value).strip()
-    if isinstance(value, int):
-        return str(value)
-    text = cell_text(value)
-    if text.endswith('.0') and text[:-2].isdigit():
-        return text[:-2]
-    return text
+    code = ''
+    national = digits
+    if explicit:
+        split = _split_calling_code(digits)
+        if split:
+            code, national = split
+    elif len(digits) == 10:
+        code, national = INDIA_CALLING_CODE, digits
+    elif len(digits) == 12 and digits.startswith(INDIA_CALLING_CODE):
+        code, national = INDIA_CALLING_CODE, digits[2:]
+    else:
+        split = _split_calling_code(digits)
+        if split and len(digits) > 10:
+            code, national = split
+    if not code:
+        code, national = INDIA_CALLING_CODE, digits
+    return f'+{code} {national}'
+
+
+def format_phone(value) -> str:
+    return normalize_phone(value)
 
 
 def clean_email(value) -> str:
@@ -93,6 +144,36 @@ def clean_email(value) -> str:
     return text
 
 
+_TEXT_DATETIME_FORMATS = (
+    '%d-%m-%Y',
+    '%d/%m/%Y',
+    '%d-%m-%Y %H:%M',
+    '%d/%m/%Y %H:%M',
+    '%d-%m-%Y %H:%M:%S',
+    '%d/%m/%Y %H:%M:%S',
+    '%Y-%m-%d %H:%M',
+    '%Y-%m-%d %H:%M:%S',
+)
+
+
+def _parse_loose_datetime(value) -> datetime | None:
+    text = str(value).strip()
+    if not text:
+        return None
+    parsed = parse_datetime(text)
+    if parsed is not None:
+        return parsed
+    only = parse_date(text)
+    if only is not None:
+        return datetime.combine(only, datetime.min.time())
+    for fmt in _TEXT_DATETIME_FORMATS:
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    return None
+
+
 def as_date(value) -> date | None:
     if value is None or value == '':
         return None
@@ -100,19 +181,19 @@ def as_date(value) -> date | None:
         return value.date()
     if isinstance(value, date):
         return value
-    return None
+    parsed = _parse_loose_datetime(value)
+    return parsed.date() if parsed else None
 
 
 def as_datetime(value):
     if value is None or value == '':
         return None
-    parsed = None
     if isinstance(value, datetime):
         parsed = value
     elif isinstance(value, date):
         parsed = datetime.combine(value, datetime.min.time())
     else:
-        parsed = parse_datetime(str(value))
+        parsed = _parse_loose_datetime(value)
         if parsed is None:
             return None
     if timezone.is_naive(parsed):
@@ -186,7 +267,7 @@ def parse_opportunity_row(raw, headers: dict[str, int]) -> dict | None:
     return {
         'prospect_number': prospect[:32],
         'name': name[:255],
-        'company_name': (company or name)[:255],
+        'company_name': company[:255],
         'contact_name': cell_text(cell_at(raw, headers, 'contact names', 'contact name'))[:255],
         'lead_source': cell_text(cell_at(raw, headers, 'lead source'))[:150],
         'service_pillar': coerce_pillar(cell_text(cell_at(raw, headers, 'service pillar')))[:100],
@@ -203,6 +284,7 @@ def parse_opportunity_row(raw, headers: dict[str, int]) -> dict | None:
         'follow_up_date': as_date(cell_at(raw, headers, 'followup date', 'follow up date')),
         'expected_close_date': as_date(cell_at(raw, headers, 'expected close date')),
         'comments': cell_text(cell_at(raw, headers, 'notes', 'comments')),
+        'created_at': as_datetime(cell_at(raw, headers, 'created date', 'created at')),
     }
 
 

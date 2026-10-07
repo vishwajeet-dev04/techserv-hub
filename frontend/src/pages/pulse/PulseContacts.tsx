@@ -28,7 +28,8 @@ import {
   DESIGNATION_PRESETS,
   STATE_PRESETS,
 } from '../../lib/pulsePresets'
-import { normalizeContactForm, validateContactForm } from '../../lib/pulseValidation'
+import { displayPhone, telHref } from '../../lib/phone'
+import { toContactPayload, validateContactForm } from '../../lib/pulseValidation'
 import type { PulseContact } from '../../types'
 
 function formatWhen(value: string) {
@@ -66,7 +67,7 @@ export default function PulseContacts() {
   }
 
   const save = useMutation({
-    mutationFn: (payload: ContactFormValues) =>
+    mutationFn: (payload: Record<string, string>) =>
       editing
         ? pulseApi.updateContact(editing.id, payload)
         : pulseApi.createContact(payload),
@@ -137,7 +138,7 @@ export default function PulseContacts() {
     setFieldErrors({})
     if (save.isPending) return
     setFormError('')
-    save.mutate(normalizeContactForm(form))
+    save.mutate(toContactPayload(form))
   }
 
   const rows = list.data?.results ?? []
@@ -219,8 +220,8 @@ export default function PulseContacts() {
                   </a>
                 ) : null}
                 {row.phone ? (
-                  <a href={`tel:${row.phone}`} className="block text-muted">
-                    {row.phone}
+                  <a href={telHref(row.phone)} className="block text-muted">
+                    {displayPhone(row.phone)}
                   </a>
                 ) : null}
                 <p className="text-subtle truncate">
@@ -270,7 +271,7 @@ export default function PulseContacts() {
                   <td className="px-3 py-3 text-muted">{row.department}</td>
                   <td className="px-3 py-3 text-muted">{row.email}</td>
                   <td className="px-3 py-3 text-muted">{row.company_email || '—'}</td>
-                  <td className="px-3 py-3 text-muted">{row.phone}</td>
+                  <td className="px-3 py-3 text-muted whitespace-nowrap">{row.phone ? displayPhone(row.phone) : ''}</td>
                   <td className="px-3 py-3 text-muted">{row.address_1 || '—'}</td>
                   <td className="px-3 py-3 text-muted">{row.city}</td>
                   <td className="px-3 py-3 text-muted">{row.state}</td>

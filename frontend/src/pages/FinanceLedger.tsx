@@ -515,6 +515,15 @@ function useStatusParam<T extends string>(allowed: readonly T[], fallback: T, no
   return [value, setValue] as const
 }
 
+/** Unpaid invoices: red once past due, amber inside the 3-day reminder window. */
+function invoiceDueTone(row: OpsInvoice, todayStart: number): string {
+  if (row.status === 'PAID' || !row.due_date) return 'text-muted'
+  const days = (new Date(`${row.due_date}T00:00:00`).getTime() - todayStart) / 86_400_000
+  if (days < 0) return 'text-danger font-medium'
+  if (days <= 3) return 'text-warning font-medium'
+  return 'text-muted'
+}
+
 /** Pending bills: red once past due, amber inside the 3-day reminder window. */
 function payableDueTone(row: OpsPayable, todayStart: number): string {
   if (row.status === 'PAID' || !row.due_date) return 'text-muted'
@@ -726,6 +735,10 @@ export function InvoicesPage() {
     () => Array.from(new Set(allRows.map((r) => r.customer_name).filter(Boolean))).sort(),
     [allRows],
   )
+  const todayStart = useMemo(() => {
+    const today = new Date()
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+  }, [])
 
   return (
     <FinancePageShell
@@ -766,12 +779,13 @@ export function InvoicesPage() {
       {list.isLoading ? (
         <p className="p-5 text-sm text-subtle">Loading…</p>
       ) : (
-        <TableWrap headers={['Invoice', 'Customer', 'Date', 'Basic/Pretax', 'GST', 'TDS', 'Gross', 'Net', 'Status']}>
+        <TableWrap headers={['Invoice', 'Customer', 'Date', 'Due Date', 'Basic/Pretax', 'GST', 'TDS', 'Gross', 'Net', 'Status']}>
           {rows.map((row) => (
             <tr key={row.id} className="border-b border-canvas">
               <td className="px-5 py-3 text-xs font-mono text-ink">{row.invoice_number}</td>
               <td className="px-5 py-3 text-sm font-medium text-ink">{row.customer_name}</td>
-              <td className="px-5 py-3 text-sm text-muted">{row.invoice_date}</td>
+              <td className="px-5 py-3 text-sm text-muted whitespace-nowrap">{row.invoice_date}</td>
+              <td className={`px-5 py-3 text-sm whitespace-nowrap ${invoiceDueTone(row, todayStart)}`}>{row.due_date ?? '—'}</td>
               <td className="px-5 py-3 text-sm tabular-nums">{fmt(row.taxable_amount)}</td>
               <td className="px-5 py-3 text-sm tabular-nums">{fmt(row.gst_amount)}</td>
               <td className="px-5 py-3 text-sm tabular-nums">{fmt(row.tds_amount)}</td>

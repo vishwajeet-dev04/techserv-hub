@@ -41,7 +41,8 @@ const ClientsMasterPage = lazy(() =>
 const VendorsMasterPage = lazy(() =>
   import('./pages/FinanceMasterData').then((m) => ({ default: m.VendorsMasterPage })),
 )
-const Reports = lazy(() => import('./pages/Reports'))
+// Reports is hidden for now. Restore this import with the /reports route below.
+// const Reports = lazy(() => import('./pages/Reports'))
 const Users = lazy(() => import('./pages/Users'))
 const Login = lazy(() => import('./pages/Login'))
 const PulseLayout = lazy(() => import('./components/PulseLayout'))
@@ -265,6 +266,7 @@ export default function App() {
               }
             />
             <Route path="finance/settings" element={<Navigate to="/finance/books" replace />} />
+            {/* Reports is hidden for now.
             <Route
               path="reports"
               element={
@@ -273,6 +275,7 @@ export default function App() {
                 </RoleProtectedRoute>
               }
             />
+            */}
             <Route path="users" element={<Navigate to="/settings/users" replace />} />
           </Route>
           <Route

@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from decimal import Decimal
 
 from django.test import TestCase
 from rest_framework import status
@@ -79,11 +80,92 @@ class StageFlowServiceTests(TestCase):
         opp = self._opp(stage='Lost', status=OpportunityStatus.LOST)
         with self.assertRaises(DrfValidationError):
             pulse_service.update_opportunity(opp, stage='Negotiation', stage_change_note='Revive')
+        win = self._opp(stage='Win', status=OpportunityStatus.WON)
+        with self.assertRaises(DrfValidationError) as ctx:
+            pulse_service.update_opportunity(
+                win, actor=self.owner, stage='Lost', stage_change_note='Relabel',
+                follow_up_date=date.today() + timedelta(days=4),
+            )
+        self.assertIn('stage', ctx.exception.detail)
+        win.refresh_from_db()
+        self.assertEqual(win.stage, 'Win')
         with self.assertRaises(DrfValidationError) as ctx:
             pulse_service.update_opportunity(
                 opp, follow_up_date=date.today() + timedelta(days=9), stage_change_note='Chase',
             )
         self.assertIn('follow_up_date', ctx.exception.detail)
+
+    def _admin(self):
+        return User.objects.create_user(
+            email='flow-admin@test.com',
+            name='Flow Admin',
+            password='pass12345',
+            role=UserRole.ADMIN,
+        )
+
+    def test_admin_can_reopen_and_relabel_final_stage(self):
+        admin = self._admin()
+        follow_up = date.today() + timedelta(days=5)
+        win = self._opp(stage='Win', status=OpportunityStatus.WON, prospect_number='PRO-REOPEN')
+        reopened = pulse_service.update_opportunity(
+            win,
+            actor=admin,
+            stage='Negotiation',
+            stage_change_note='Marked won too early',
+            follow_up_date=follow_up,
+            negotiated_amount=Decimal('250000'),
+        )
+        self.assertEqual(reopened.stage, 'Negotiation')
+        self.assertEqual(reopened.status, OpportunityStatus.OPEN)
+        stage_change = OpportunityActivity.objects.get(
+            opportunity=reopened, action=OpportunityActivityAction.STAGE_CHANGE,
+        )
+        self.assertEqual(stage_change.from_stage, 'Win')
+        self.assertEqual(stage_change.to_stage, 'Negotiation')
+        self.assertEqual(stage_change.actor_id, admin.id)
+
+        other = self._opp(stage='Win', status=OpportunityStatus.WON, prospect_number='PRO-RELABEL')
+        relabeled = pulse_service.update_opportunity(
+            other,
+            actor=admin,
+            stage='Lost',
+            stage_change_note='Customer declined',
+            follow_up_date=follow_up,
+        )
+        self.assertEqual(relabeled.stage, 'Lost')
+        self.assertEqual(relabeled.status, OpportunityStatus.LOST)
+        self.assertTrue(
+            OpportunityActivity.objects.filter(
+                opportunity=relabeled,
+                action=OpportunityActivityAction.STAGE_CHANGE,
+                from_stage='Win',
+                to_stage='Lost',
+            ).exists()
+        )
+
+    def test_admin_can_change_follow_up_on_final_stage(self):
+        admin = self._admin()
+        opp = self._opp(stage='Win', status=OpportunityStatus.WON, prospect_number='PRO-FOLLOW')
+        new_date = date.today() + timedelta(days=12)
+        saved = pulse_service.update_opportunity(
+            opp, actor=admin, follow_up_date=new_date, stage_change_note='Still waiting on paperwork',
+        )
+        self.assertEqual(saved.stage, 'Win')
+        self.assertEqual(saved.follow_up_date, new_date)
+        activity = OpportunityActivity.objects.get(opportunity=saved)
+        self.assertEqual(activity.action, OpportunityActivityAction.FOLLOW_UP_CHANGE)
+        self.assertEqual(activity.follow_up_date, new_date)
+
+    def test_admin_cannot_move_open_deal_backward(self):
+        admin = self._admin()
+        opp = self._opp(stage='Commercial')
+        with self.assertRaises(DrfValidationError) as ctx:
+            pulse_service.update_opportunity(
+                opp, actor=admin, stage='Demo', stage_change_note='Go back',
+            )
+        self.assertIn('stage', ctx.exception.detail)
+        opp.refresh_from_db()
+        self.assertEqual(opp.stage, 'Commercial')
 
     def test_follow_up_extension_logs_activity(self):
         opp = self._opp(stage='Demo')

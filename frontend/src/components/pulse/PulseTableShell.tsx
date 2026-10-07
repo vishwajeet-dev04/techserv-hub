@@ -5,6 +5,7 @@ export default function PulseTableShell({
   minWidth,
   title,
   count,
+  headerAction,
   headerRight,
   footer,
   mobileCards,
@@ -13,6 +14,7 @@ export default function PulseTableShell({
   minWidth?: string
   title?: string
   count?: number
+  headerAction?: ReactNode
   headerRight?: ReactNode
   footer?: ReactNode
   /** Stacked card list shown instead of the table below the sm breakpoint. */
@@ -21,15 +23,18 @@ export default function PulseTableShell({
   return (
     <div className="mt-5 bg-surface/80 backdrop-blur-md border border-line rounded-2xl shadow-sm overflow-hidden">
       {title != null ? (
-        <div className="px-4 py-3.5 border-b border-line flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-ink">
-            {title}
-            {typeof count === 'number' ? (
-              <span className="text-muted font-medium"> ({count})</span>
-            ) : null}
-          </p>
+        <div className="px-4 py-3.5 border-b border-line space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-ink min-w-0">
+              {title}
+              {typeof count === 'number' ? (
+                <span className="text-muted font-medium"> ({count})</span>
+              ) : null}
+            </p>
+            {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
+          </div>
           {headerRight ? (
-            <div className="flex items-center gap-2 min-w-0 max-w-full sm:shrink-0">{headerRight}</div>
+            <div className="flex flex-wrap items-center gap-1.5">{headerRight}</div>
           ) : null}
         </div>
       ) : null}

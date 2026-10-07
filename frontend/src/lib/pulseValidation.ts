@@ -1,4 +1,5 @@
 import type { ContactFormValues } from '../components/PulseContactFields'
+import { joinPhone } from './phone'
 
 const EMAIL_RE =
   /^[^\s@]+(?:\.[^\s@]+)*@[^\s@]+(?:\.[^\s@]+)*\.[a-zA-Z]{2,}$/
@@ -15,6 +16,7 @@ export function normalizeContactForm(form: ContactFormValues): ContactFormValues
     department: normalizePulseText(form.department),
     email: form.email.trim(),
     company_email: form.company_email.trim(),
+    phone_country: form.phone_country || '+91',
     phone: form.phone.trim(),
     address_1: normalizePulseText(form.address_1),
     city: normalizePulseText(form.city),
@@ -73,6 +75,12 @@ export function validateContactForm(form: ContactFormValues): Record<string, str
     errors.phone = 'Enter a valid phone number (10–15 digits).'
   }
   return errors
+}
+
+export function toContactPayload(form: ContactFormValues): Record<string, string> {
+  const normalized = normalizeContactForm(form)
+  const { phone_country, phone, ...rest } = normalized
+  return { ...rest, phone: joinPhone(phone_country, phone) }
 }
 
 export type OpportunityFormValues = {

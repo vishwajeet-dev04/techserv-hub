@@ -116,7 +116,8 @@ const financeNav: Record<'main' | 'capital' | 'system', FinanceNavEntry[]> = {
   ],
   system: [
     { label: 'MIS Upload', path: '/finance/mis' },
-    { label: 'Reports', path: '/reports' },
+    // Reports is hidden for now. Restore this item to show it again.
+    // { label: 'Reports', path: '/reports' },
   ],
 }
 

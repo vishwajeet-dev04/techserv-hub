@@ -18,6 +18,7 @@ urlpatterns = [
     path('opportunities/export/', views.opportunities_export, name='pulse-opportunity-export'),
     path('opportunities/template/', views.opportunities_template, name='pulse-opportunity-template'),
     path('opportunities/import/', views.opportunities_import, name='pulse-opportunity-import'),
+    path('opportunities/<uuid:pk>/created-at/', views.opportunity_created_at, name='pulse-opportunity-created-at'),
     path('opportunities/<uuid:pk>/', views.OpportunityDetailView.as_view(), name='pulse-opportunity-detail'),
     path('opportunities/<uuid:pk>/activities/', views.OpportunityActivityListView.as_view(), name='pulse-opportunity-activities'),
     path('opportunities/<uuid:pk>/documents/', views.opportunity_documents, name='pulse-opportunity-documents'),

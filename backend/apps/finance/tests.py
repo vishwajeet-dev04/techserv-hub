@@ -229,9 +229,26 @@ class MisUploadAPITests(APITestCase):
         response = self.client.post('/api/v1/finance/mis/', {'file': uploaded}, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_finance_and_sales_forbidden(self):
+    def test_finance_can_upload_and_sales_forbidden(self):
+        from io import BytesIO
+        from tempfile import TemporaryDirectory
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+        from openpyxl import Workbook
+
+        workbook = Workbook()
+        workbook.active.append(['Sample'])
+        buffer = BytesIO()
+        workbook.save(buffer)
+        uploaded = SimpleUploadedFile('finance-mis.xlsx', buffer.getvalue())
         self.client.force_authenticate(self.finance_user)
-        self.assertEqual(self.client.get('/api/v1/finance/mis/').status_code, status.HTTP_403_FORBIDDEN)
+        with TemporaryDirectory() as tmp:
+            with override_settings(MEDIA_ROOT=tmp):
+                response = self.client.post('/api/v1/finance/mis/', {'file': uploaded}, format='multipart')
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+                listed = self.client.get('/api/v1/finance/mis/')
+                self.assertEqual(listed.status_code, status.HTTP_200_OK)
         self.client.force_authenticate(self.sales_user)
         self.assertEqual(self.client.get('/api/v1/finance/mis/').status_code, status.HTTP_403_FORBIDDEN)
 

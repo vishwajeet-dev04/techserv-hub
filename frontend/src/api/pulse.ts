@@ -103,6 +103,16 @@ export const pulseApi = {
     const response = await apiClient.post<PulseOpportunity>('/pulse/opportunities/', compact(data))
     return response.data
   },
+  assignOpportunity: async (id: string, ownerId: string): Promise<PulseOpportunity> => {
+    const response = await apiClient.patch<PulseOpportunity>(`/pulse/opportunities/${id}/`, { owner: ownerId })
+    return response.data
+  },
+  setOpportunityCreatedAt: async (id: string, createdAt: string): Promise<PulseOpportunity> => {
+    const response = await apiClient.patch<PulseOpportunity>(`/pulse/opportunities/${id}/created-at/`, {
+      created_at: createdAt,
+    })
+    return response.data
+  },
   updateOpportunity: async (
     id: string,
     data: Record<string, string> | FormData,

@@ -39,7 +39,7 @@ from .services.ledger_summary import (
     payables_summary,
     purchase_orders_summary,
 )
-from common.permissions.roles import IsAdmin, IsFinanceOperator, IsFinanceOrAbove
+from common.permissions.roles import IsFinanceOperator, IsFinanceOrAbove
 
 logger = logging.getLogger(__name__)
 
@@ -331,7 +331,7 @@ class ComplianceItemDetailView(generics.RetrieveUpdateDestroyAPIView):
 class MisUploadListCreateView(generics.ListCreateAPIView):
     queryset = MisUpload.objects.select_related('uploaded_by')
     serializer_class = MisUploadSerializer
-    permission_classes = [IsAuthenticated, IsAdmin]
+    permission_classes = [IsAuthenticated, IsFinanceOrAbove]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def perform_create(self, serializer):
