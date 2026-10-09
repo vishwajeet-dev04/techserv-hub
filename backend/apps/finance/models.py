@@ -516,6 +516,38 @@ class ComplianceItem(models.Model):
         return self.title
 
 
+class ComplianceReminderEmailLog(models.Model):
+    """Dedup log for automated compliance due-date reminder emails."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    compliance_item = models.ForeignKey(
+        ComplianceItem,
+        on_delete=models.CASCADE,
+        related_name='reminder_email_logs',
+    )
+    offset_days = models.PositiveSmallIntegerField()
+    due_date = models.DateField()
+    recipient_email = models.EmailField()
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'compliance_reminder_email_logs'
+        ordering = ['-sent_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['compliance_item', 'offset_days', 'due_date', 'recipient_email'],
+                name='uniq_compliance_reminder_email_log',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(offset_days__in=[1, 3]),
+                name='compliance_reminder_email_offset_days_valid',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.offset_days}d {self.compliance_item_id} {self.recipient_email}'
+
+
 class FinanceClient(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, db_index=True)

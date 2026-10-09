@@ -204,6 +204,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'finance.send_invoice_due_reminders',
         'schedule': crontab(hour=9, minute=0),
     },
+    'finance-compliance-due-reminders-daily': {
+        'task': 'finance.send_compliance_due_reminders',
+        'schedule': crontab(hour=9, minute=0),
+    },
 }
 
 FRONTEND_URL = config('FRONTEND_URL', default='')

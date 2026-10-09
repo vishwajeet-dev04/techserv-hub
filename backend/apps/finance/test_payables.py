@@ -11,8 +11,18 @@ from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from apps.finance.compliance_reminders import send_compliance_due_reminders
 from apps.finance.invoice_reminders import send_invoice_due_reminders
-from apps.finance.models import Invoice, InvoiceStatus, Payable, PayableReminderEmailLog, PayableStatus
+from apps.finance.models import (
+    ComplianceItem,
+    ComplianceReminderEmailLog,
+    ComplianceStatus,
+    Invoice,
+    InvoiceStatus,
+    Payable,
+    PayableReminderEmailLog,
+    PayableStatus,
+)
 from apps.finance.payable_reminders import reminder_recipients, send_payable_due_reminders
 from apps.users.models import User, UserRole
 
@@ -197,3 +207,122 @@ class InvoiceReminderTests(TestCase):
         self.assertNotIn('Paid Co', bodies)
         again = send_invoice_due_reminders(as_of_date=self.today)
         self.assertEqual(again.sent, 0)
+
+
+def _compliance(**overrides) -> ComplianceItem:
+    defaults = {
+        'title': 'GSTR-1 for September 2026',
+        'form_name': 'GSTR-1',
+        'applicable_act': 'GST',
+        'period_month': date(2026, 10, 1),
+        'due_date': date(2026, 10, 11),
+        'status': ComplianceStatus.PENDING,
+    }
+    defaults.update(overrides)
+    return ComplianceItem.objects.create(**defaults)
+
+
+class ComplianceReminderTests(TestCase):
+    def setUp(self):
+        self.today = date(2026, 10, 8)
+        User.objects.create_user(
+            email='priya@test.com', name='Priya Sharma', password='pass12345', role=UserRole.FINANCE,
+        )
+        User.objects.create_user(
+            email='rahul@test.com', name='Rahul Mehta', password='pass12345', role=UserRole.ADMIN,
+        )
+        User.objects.create_user(
+            email='sales-comp@test.com', name='Sales', password='pass12345', role=UserRole.SALES,
+        )
+        User.objects.create_user(
+            email='gone-comp@test.com',
+            name='Gone',
+            password='pass12345',
+            role=UserRole.FINANCE,
+            is_active=False,
+        )
+
+    def test_sends_personal_three_day_and_one_day_reminders(self):
+        _compliance(title='GSTR-1 September', due_date=self.today + timedelta(days=3))
+        _compliance(
+            title='PF September',
+            form_name='ECR / Challan',
+            applicable_act='EPF Act',
+            due_date=self.today + timedelta(days=1),
+        )
+        _compliance(title='Too soon', due_date=self.today + timedelta(days=2))
+        _compliance(
+            title='Already filed',
+            due_date=self.today + timedelta(days=3),
+            status=ComplianceStatus.COMPLETED,
+        )
+        _compliance(title='No date', due_date=None, due_date_note='As prescribed')
+        _compliance(
+            title='Not applicable',
+            due_date=self.today + timedelta(days=1),
+            status=ComplianceStatus.NOT_APPLICABLE,
+        )
+
+        result = send_compliance_due_reminders(as_of_date=self.today)
+        self.assertEqual(result.sent, 4)
+        self.assertEqual(len(mail.outbox), 4)
+        recipients = sorted(message.to[0] for message in mail.outbox)
+        self.assertEqual(recipients, ['priya@test.com', 'priya@test.com', 'rahul@test.com', 'rahul@test.com'])
+        self.assertNotIn('sales-comp@test.com', recipients)
+        self.assertNotIn('gone-comp@test.com', recipients)
+
+        priya = [message for message in mail.outbox if message.to == ['priya@test.com']]
+        rahul = [message for message in mail.outbox if message.to == ['rahul@test.com']]
+        self.assertTrue(all(message.body.startswith('Hi Priya Sharma,') for message in priya))
+        self.assertTrue(all(message.body.startswith('Hi Rahul Mehta,') for message in rahul))
+        bodies = '\n'.join(message.body for message in mail.outbox)
+        self.assertIn('GSTR-1 September', bodies)
+        self.assertIn('Form: GSTR-1 · Act: GST', bodies)
+        self.assertIn('Period: October 2026', bodies)
+        self.assertIn('PF September', bodies)
+        self.assertNotIn('Too soon', bodies)
+        self.assertNotIn('Already filed', bodies)
+        self.assertNotIn('No date', bodies)
+        self.assertNotIn('Not applicable', bodies)
+        self.assertNotIn('Rs.', bodies)
+        self.assertNotIn('Hi Finance team', bodies)
+        subjects = ' '.join(message.subject for message in mail.outbox)
+        self.assertIn('due in 3 days', subjects)
+        self.assertIn('due tomorrow', subjects)
+
+        again = send_compliance_due_reminders(as_of_date=self.today)
+        self.assertEqual(again.sent, 0)
+        self.assertEqual(len(mail.outbox), 4)
+        self.assertEqual(ComplianceReminderEmailLog.objects.count(), 4)
+
+    def test_failed_send_retries_only_that_person(self):
+        _compliance(title='GSTR-3B September', due_date=self.today + timedelta(days=3))
+
+        def send(subject, body, from_email, recipient_list, fail_silently=False):
+            if recipient_list == ['priya@test.com']:
+                raise RuntimeError('smtp down')
+            mail.outbox.append(mail.EmailMessage(subject, body, from_email, recipient_list))
+            return 1
+
+        with patch('apps.finance.compliance_reminders.send_mail', side_effect=send):
+            result = send_compliance_due_reminders(as_of_date=self.today)
+        self.assertEqual(result.sent, 1)
+        self.assertEqual(result.failed, 1)
+        self.assertEqual(
+            list(ComplianceReminderEmailLog.objects.values_list('recipient_email', flat=True)),
+            ['rahul@test.com'],
+        )
+
+        with patch('apps.finance.compliance_reminders.send_mail', side_effect=send):
+            again = send_compliance_due_reminders(as_of_date=self.today)
+        self.assertEqual(again.sent, 0)
+        self.assertEqual(again.failed, 1)
+        self.assertEqual(ComplianceReminderEmailLog.objects.filter(recipient_email='priya@test.com').count(), 0)
+        self.assertEqual(ComplianceReminderEmailLog.objects.filter(recipient_email='rahul@test.com').count(), 1)
+
+    def test_management_command(self):
+        _compliance(title='Advance tax', due_date=date(2026, 10, 1) + timedelta(days=1))
+        call_command('send_compliance_due_reminders', '--as-of', '2026-10-01', verbosity=0)
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertTrue(all(message.subject.startswith('Compliance reminder:') for message in mail.outbox))
+
