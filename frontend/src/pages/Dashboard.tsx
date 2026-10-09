@@ -22,6 +22,7 @@ import { useAuth } from '../hooks/useAuth'
 import { btnSecondaryClass } from '../components/Modal'
 import { useDateRange } from '../hooks/useDateRange'
 import OpsSummaryPanel from '../components/ops/OpsSummaryPanel'
+import PipelineSections from './OpsPipeline'
 import { chartGridStroke, chartTick, seriesColor, STATUS_COLORS, tooltipProps } from '../lib/chartTheme'
 import { fmtInr as fmtMoney, fmtInrCompact as fmtCompact } from '../lib/format'
 
@@ -224,6 +225,8 @@ export default function Dashboard() {
         </div>
         {volume.length === 0 ? <EmptyChart /> : <VolumeChart tab={volumeTab} rows={volume} />}
       </section>
+
+      <PipelineSections />
     </div>
   )
 }

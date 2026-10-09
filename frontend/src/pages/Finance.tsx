@@ -103,16 +103,24 @@ function KpiCard({
   )
 }
 
-function InvoiceTable({ rows }: { rows: OpsInvoiceRow[] }) {
+function InvoiceTable({
+  rows,
+  partyLabel,
+  emptyLabel,
+}: {
+  rows: OpsInvoiceRow[]
+  partyLabel: string
+  emptyLabel: string
+}) {
   if (rows.length === 0) {
-    return <p className="text-sm text-subtle py-4">No invoices in this bucket</p>
+    return <p className="text-sm text-subtle py-4">{emptyLabel}</p>
   }
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[420px]">
         <thead>
           <tr className="text-left text-[10px] uppercase tracking-widest text-subtle">
-            <th className="py-2 font-semibold">Customer</th>
+            <th className="py-2 font-semibold">{partyLabel}</th>
             <th className="py-2 font-semibold">Invoice</th>
             <th className="py-2 font-semibold">Value</th>
             <th className="py-2 font-semibold">Pending since</th>
@@ -200,6 +208,7 @@ export default function Finance() {
   const [cashMode, setCashMode] = useState<CashMode>('combined')
   const [bankOpen, setBankOpen] = useState(true)
   const [agingOpen, setAgingOpen] = useState(false)
+  const [payableAgingOpen, setPayableAgingOpen] = useState(false)
   const { from, to } = useDateRange()
 
   const summary = useQuery<OpsSummary>({
@@ -278,6 +287,11 @@ export default function Finance() {
   const overdueShare = rec.total > 0 ? (rec.overdue / rec.total) * 100 : 0
   const duePreview = rec.due_invoices.slice(0, 5)
   const overduePreview = rec.overdue_invoices.slice(0, 5)
+  const pay = data.payables
+  const payDueShare = pay.total > 0 ? (pay.due / pay.total) * 100 : 0
+  const payOverdueShare = pay.total > 0 ? (pay.overdue / pay.total) * 100 : 0
+  const payDuePreview = pay.due_invoices.slice(0, 5)
+  const payOverduePreview = pay.overdue_invoices.slice(0, 5)
   const asOfLabel = new Date(`${data.as_of}T00:00:00`).toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
@@ -395,7 +409,7 @@ export default function Finance() {
                 </li>
               </ul>
               <div className="mt-3">
-                <InvoiceTable rows={duePreview} />
+                <InvoiceTable rows={duePreview} partyLabel="Customer" emptyLabel="No invoices in this bucket" />
               </div>
               <Link
                 to="/finance/invoices"
@@ -434,13 +448,116 @@ export default function Finance() {
                 </ul>
               ) : null}
               <div className="mt-3">
-                <InvoiceTable rows={overduePreview} />
+                <InvoiceTable rows={overduePreview} partyLabel="Customer" emptyLabel="No invoices in this bucket" />
               </div>
               <Link
                 to="/finance/invoices"
                 className="inline-flex items-center gap-1 mt-3 text-xs font-medium text-brand hover:text-brand-hover"
               >
                 View All ({rec.overdue_invoices.length})
+                <ChevronRight className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-surface/80 backdrop-blur-md border border-line rounded-2xl p-5 shadow-sm space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-base font-semibold text-ink">Payables</h3>
+            <Link to="/finance/payables" className="text-xs font-medium text-brand hover:text-brand-hover">
+              View All →
+            </Link>
+          </div>
+
+          <div className="rounded-xl bg-canvas/80 border border-line px-4 py-4 flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">Total Payables</p>
+              <p className="text-3xl font-semibold text-brand mt-1 tabular-nums">{fmt(pay.total)}</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="h-2.5 rounded-full overflow-hidden flex bg-canvas">
+              <div className="h-full bg-emerald-500" style={{ width: `${payDueShare}%` }} />
+              <div className="h-full bg-red-500" style={{ width: `${payOverdueShare}%` }} />
+            </div>
+            <div className="flex items-center gap-4 text-xs text-muted">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden />
+                Due {fmt(pay.due)}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-500" aria-hidden />
+                Overdue {fmt(pay.overdue)}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <p className="text-sm font-semibold text-ink">Due (≤ 30 days)</p>
+              <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-400 mt-1 tabular-nums">{fmt(pay.due)}</p>
+              <ul className="mt-2 space-y-1 text-xs text-muted">
+                <li className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden />
+                    0–7 days
+                  </span>
+                  <span className="tabular-nums text-ink font-medium">{fmt(pay.due_0_7)}</span>
+                </li>
+                <li className="flex items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-violet-500" aria-hidden />
+                    8–30 days
+                  </span>
+                  <span className="tabular-nums text-ink font-medium">{fmt(pay.due_8_30)}</span>
+                </li>
+              </ul>
+              <div className="mt-3">
+                <InvoiceTable rows={payDuePreview} partyLabel="Vendor" emptyLabel="No bills in this bucket" />
+              </div>
+              <Link
+                to="/finance/payables"
+                className="inline-flex items-center gap-1 mt-3 text-xs font-medium text-brand hover:text-brand-hover"
+              >
+                View All ({pay.due_invoices.length})
+                <ChevronRight className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />
+              </Link>
+            </div>
+
+            <div>
+              <p className="text-sm font-semibold text-ink">Overdue (&gt; 30 days)</p>
+              <p className="text-lg font-semibold text-danger mt-1 tabular-nums">{fmt(pay.overdue)}</p>
+              <button
+                type="button"
+                className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-ink"
+                onClick={() => setPayableAgingOpen((open) => !open)}
+              >
+                Expand aging breakdown
+                <ChevronDown
+                  className={`w-3.5 h-3.5 transition-transform ${payableAgingOpen ? 'rotate-180' : ''}`}
+                  strokeWidth={2}
+                  aria-hidden
+                />
+              </button>
+              {payableAgingOpen ? (
+                <ul className="mt-2 space-y-1 text-xs text-muted">
+                  {pay.aging.map((row) => (
+                    <li key={row.bucket} className="flex items-center justify-between gap-2">
+                      <span>{row.bucket} days</span>
+                      <span className="tabular-nums text-ink font-medium">{fmt(row.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <div className="mt-3">
+                <InvoiceTable rows={payOverduePreview} partyLabel="Vendor" emptyLabel="No bills in this bucket" />
+              </div>
+              <Link
+                to="/finance/payables"
+                className="inline-flex items-center gap-1 mt-3 text-xs font-medium text-brand hover:text-brand-hover"
+              >
+                View All ({pay.overdue_invoices.length})
                 <ChevronRight className="w-3.5 h-3.5" strokeWidth={2} aria-hidden />
               </Link>
             </div>

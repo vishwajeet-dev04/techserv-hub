@@ -410,6 +410,16 @@ export interface OpsSummary {
     due_invoices: OpsInvoiceRow[]
     overdue_invoices: OpsInvoiceRow[]
   }
+  payables: {
+    total: number
+    due: number
+    due_0_7: number
+    due_8_30: number
+    overdue: number
+    due_invoices: OpsInvoiceRow[]
+    overdue_invoices: OpsInvoiceRow[]
+    aging: { bucket: string; amount: number }[]
+  }
   cashflow_metrics: {
     total_inflow: number
     total_outflow: number

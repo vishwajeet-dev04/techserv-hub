@@ -280,7 +280,7 @@ export default function ExecutiveSummary() {
               onSelectStage={(key) => setDetail({ kind: 'stage', key })}
               action={
                 <Link
-                  to="/pulse/pipeline"
+                  to="/pulse/summary"
                   className="inline-flex items-center gap-1.5 text-[12px] font-medium text-brand bg-surface/80 border border-brand/20 rounded-full px-3 py-1.5 w-fit shrink-0 hover:border-brand/50"
                 >
                   Open pipeline

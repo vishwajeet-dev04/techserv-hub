@@ -118,9 +118,51 @@ def get_ops_summary(date_from: str | None = None, date_to: str | None = None) ->
 
     total_inflow = _money(inflows.aggregate(total=Sum('amount'))['total'])
     total_outflow = _money(outflows.aggregate(total=Sum('amount'))['total'])
-    pending_payables = _payable_in_range(
+    pending_payable_rows = _payable_in_range(
         Payable.objects.filter(status=PayableStatus.PENDING), start, end,
-    ).aggregate(total=Sum('payable_amount'))['total'] or Decimal('0')
+    )
+    pay_due_0_7 = Decimal('0')
+    pay_due_8_30 = Decimal('0')
+    pay_overdue = Decimal('0')
+    pay_31_60 = Decimal('0')
+    pay_61_90 = Decimal('0')
+    pay_90_plus = Decimal('0')
+    pay_due_rows = []
+    pay_overdue_rows = []
+    pending_payables = Decimal('0')
+    for payable in pending_payable_rows:
+        amount = payable.payable_amount or Decimal('0')
+        if amount <= 0:
+            continue
+        pending_payables += amount
+        pending_from = payable.due_date or payable.invoice_date or today
+        days = (today - pending_from).days
+        row = {
+            'id': str(payable.id),
+            'invoice_number': payable.invoice_number,
+            'customer_name': payable.vendor,
+            'amount': _money(amount),
+            'invoice_date': (payable.invoice_date or pending_from).isoformat(),
+            'due_date': payable.due_date.isoformat() if payable.due_date else None,
+            'pending_since': pending_from.isoformat(),
+            'days_pending': days,
+        }
+        if days <= 7:
+            pay_due_0_7 += amount
+            pay_due_rows.append(row)
+        elif days <= 30:
+            pay_due_8_30 += amount
+            pay_due_rows.append(row)
+        else:
+            pay_overdue += amount
+            pay_overdue_rows.append(row)
+            if days <= 60:
+                pay_31_60 += amount
+            elif days <= 90:
+                pay_61_90 += amount
+            else:
+                pay_90_plus += amount
+    pay_due_total = pay_due_0_7 + pay_due_8_30
 
     capital = {}
     for item in _in_range(CapitalEntry.objects.all(), 'entry_date', start, end).values('capital_type').annotate(total=Sum('amount')):
@@ -143,6 +185,20 @@ def get_ops_summary(date_from: str | None = None, date_to: str | None = None) ->
             'overdue': _money(overdue),
             'due_invoices': due_rows[:20],
             'overdue_invoices': overdue_rows[:20],
+        },
+        'payables': {
+            'total': _money(pending_payables),
+            'due': _money(pay_due_total),
+            'due_0_7': _money(pay_due_0_7),
+            'due_8_30': _money(pay_due_8_30),
+            'overdue': _money(pay_overdue),
+            'due_invoices': pay_due_rows[:20],
+            'overdue_invoices': pay_overdue_rows[:20],
+            'aging': [
+                {'bucket': '31-60', 'amount': _money(pay_31_60)},
+                {'bucket': '61-90', 'amount': _money(pay_61_90)},
+                {'bucket': '90+', 'amount': _money(pay_90_plus)},
+            ],
         },
         'cashflow_metrics': {
             'total_inflow': total_inflow,

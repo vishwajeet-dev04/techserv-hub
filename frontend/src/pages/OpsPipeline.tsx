@@ -1,12 +1,11 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { BarChart3, Calendar, Layers3, PieChart, Search } from 'lucide-react'
+import { BarChart3, Calendar, PieChart, Search } from 'lucide-react'
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Legend,
   ResponsiveContainer,
   Tooltip,
@@ -107,20 +106,8 @@ function getInitials(name: string): string {
     .toUpperCase()
 }
 
-function stageBarColor(stage: string) {
-  if (stage === 'Win') return 'var(--color-success)'
-  if (stage === 'Lost') return 'var(--color-danger)'
-  if (stage === 'Cancelled') return 'var(--color-subtle)'
-  if (stage === 'Negotiation' || stage === 'Commercial') return 'var(--color-warning)'
-  return 'var(--color-brand)'
-}
-
 function IconBars() {
   return <BarChart3 className="w-4 h-4" strokeWidth={2} aria-hidden />
-}
-
-function IconLayers() {
-  return <Layers3 className="w-4 h-4" strokeWidth={2} aria-hidden />
 }
 
 function IconCompare() {
@@ -196,7 +183,7 @@ function CompareSliceCard({
   )
 }
 
-function OpsPipeline() {
+function PipelineSections() {
   const { hasAccess } = useAuth()
   const { from: dateFrom, to: dateTo } = useDateRange()
   const [search, setSearch] = useState('')
@@ -300,20 +287,15 @@ function OpsPipeline() {
   const pillars = settings.data?.service_pillars ?? []
   const stages = settings.data?.sales_stages ?? []
   const data = pipeline.data
-  const stageChart = (data?.by_stage ?? []).filter((row) => row.count > 0)
 
-  if (!allowed) {
-    return (
-      <p className="p-4 sm:p-6 text-sm text-muted">Pulse CRM is not available for this role.</p>
-    )
-  }
+  if (!allowed) return null
 
   if (pipeline.isLoading) {
-    return <p className="p-4 sm:p-6 text-sm text-muted">Loading pipeline…</p>
+    return <p className="text-sm text-muted">Loading pipeline…</p>
   }
 
   if (pipeline.isError || !data) {
-    return <p className="p-4 sm:p-6 text-sm text-danger">{getErrorMessage(pipeline.error, 'Could not load Pulse pipeline.')}</p>
+    return <p className="text-sm text-danger">{getErrorMessage(pipeline.error, 'Could not load Pulse pipeline.')}</p>
   }
 
   const currentOpen = compareCurrent.data?.open_pipeline?.value ?? compareCurrent.data?.pipeline_value ?? 0
@@ -322,27 +304,20 @@ function OpsPipeline() {
   const priorOpenCount = comparePrior.data?.open_pipeline?.count ?? comparePrior.data?.open_opportunities ?? 0
 
   return (
-    <div className="p-4 sm:p-6 max-w-screen-xl mx-auto space-y-6 min-w-0">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-brand">Deal-to-Billing Ops</p>
-          <h2 className="text-2xl font-semibold text-ink mt-1">Pipeline</h2>
-          <p className="text-sm text-muted mt-1">Live Pulse CRM leads and opportunities, filtered by created date.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={openCompare}
-            className={`${btnSecondaryClass} !px-3 !py-2 text-xs`}
-          >
-            <BarChart3 className="w-3.5 h-3.5 text-brand" strokeWidth={2} aria-hidden />
-            Compare
-          </button>
-          <span className="inline-flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 w-fit">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            Live Pulse CRM
-          </span>
-        </div>
+    <div className="space-y-6 min-w-0">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={openCompare}
+          className={`${btnSecondaryClass} !px-3 !py-2 text-xs`}
+        >
+          <BarChart3 className="w-3.5 h-3.5 text-brand" strokeWidth={2} aria-hidden />
+          Compare
+        </button>
+        <span className="inline-flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 w-fit">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+          Live Pulse CRM
+        </span>
       </div>
 
       <Modal
@@ -471,7 +446,7 @@ function OpsPipeline() {
 
       <PipelineFlow data={data} selectedStage={stageFilter} onSelectStage={selectStage} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
         <ChartCard title="Leads By Source" icon={<IconBars />}>
           {data.by_source.length === 0 ? (
             <EmptyChart />
@@ -484,27 +459,6 @@ function OpsPipeline() {
                   <YAxis type="category" dataKey="name" width={110} tick={chartTick} axisLine={false} tickLine={false} />
                   <Tooltip {...tooltipProps} cursor={chartCursor} />
                   <Bar dataKey="count" fill="var(--color-brand)" radius={[0, 6, 6, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </ChartCard>
-        <ChartCard title="Deal Stages" icon={<IconLayers />}>
-          {stageChart.length === 0 ? (
-            <EmptyChart />
-          ) : (
-            <div className={chartWellClass}>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={stageChart} layout="vertical" margin={{ left: 4, right: 12, top: 8, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" horizontal={false} />
-                  <XAxis type="number" tick={chartTick} allowDecimals={false} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="stage" width={120} tick={chartTick} axisLine={false} tickLine={false} />
-                  <Tooltip {...tooltipProps} cursor={chartCursor} />
-                  <Bar dataKey="count" radius={[0, 6, 6, 0]}>
-                    {stageChart.map((row) => (
-                      <Cell key={row.stage} fill={stageBarColor(row.stage)} />
-                    ))}
-                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -690,4 +644,4 @@ function EmptyChart() {
   return <p className="text-sm text-muted py-16 text-center">No records in this created-date range.</p>
 }
 
-export default OpsPipeline
+export default PipelineSections

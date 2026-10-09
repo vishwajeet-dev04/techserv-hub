@@ -25,7 +25,6 @@ const SelectCompany = lazy(() => import('./pages/SelectCompany'))
 const SelectRegion = lazy(() => import('./pages/SelectRegion'))
 const ExecutiveSummary = lazy(() => import('./pages/ExecutiveSummary'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
-const OpsPipeline = lazy(() => import('./pages/OpsPipeline'))
 const OpsTeam = lazy(() => import('./pages/OpsTeam'))
 const Business = lazy(() => import('./pages/Business'))
 const CompanyDetail = lazy(() => import('./pages/CompanyDetail'))
@@ -125,14 +124,7 @@ export default function App() {
               }
             >
             <Route path="ops" element={<Dashboard />} />
-            <Route
-              path="ops/pipeline"
-              element={
-                <RoleProtectedRoute allowedRoles={CRM_ROLES}>
-                  <OpsPipeline />
-                </RoleProtectedRoute>
-              }
-            />
+            <Route path="ops/pipeline" element={<Navigate to="/ops" replace />} />
             <Route path="ops/team" element={<Navigate to="/pulse/team" replace />} />
             <Route
               path="business"
@@ -296,7 +288,7 @@ export default function App() {
             <Route path="reminders" element={<PulseReminders />} />
             <Route path="team" element={<OpsTeam />} />
             <Route path="summary" element={<Dashboard />} />
-            <Route path="pipeline" element={<OpsPipeline />} />
+            <Route path="pipeline" element={<Navigate to="/pulse/summary" replace />} />
             <Route path="po-contracts" element={<Deals />} />
             <Route path="po-contracts/:id" element={<DealDetail />} />
             <Route path="settings" element={<Navigate to="/pulse/contacts" replace />} />

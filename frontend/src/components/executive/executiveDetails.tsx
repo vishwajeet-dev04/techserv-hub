@@ -92,7 +92,7 @@ function opsDetail(key: OpsDetailKey, ctx: DetailContext): DetailContent | null 
       return {
         title: 'Pipeline value',
         subtitle: priorLabel(p.pipeline_value, p.pipeline_value_prior, 'money'),
-        action: opsLink(ctx, 'Open pipeline', '/pulse/pipeline'),
+        action: opsLink(ctx, 'Open summary', '/pulse/summary'),
         body: (
           <>
             <DrawerGrid>
@@ -192,7 +192,7 @@ function opsDetail(key: OpsDetailKey, ctx: DetailContext): DetailContent | null 
           p.funnel.drop.percent > 0
             ? `Largest drop: ${p.funnel.drop.from_label} → ${p.funnel.drop.to_label} (${p.funnel.drop.percent}%)`
             : 'Leads → deals → win → closed',
-        action: opsLink(ctx, 'Open pipeline', '/pulse/pipeline'),
+        action: opsLink(ctx, 'Open summary', '/pulse/summary'),
         body: (
           <DrawerSection title="Steps">
             <DrawerRows

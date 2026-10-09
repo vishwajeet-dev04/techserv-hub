@@ -12,20 +12,19 @@ import { useDateRange } from '../hooks/useDateRange'
 
 const navGroups: { label: string; items: { to: string; label: string; end?: boolean }[] }[] = [
   {
-    label: 'CRM',
-    items: [
-      { to: '/pulse/contacts', label: 'Contacts' },
-      { to: '/pulse/opportunities', label: 'Opportunities' },
-      { to: '/pulse/reminders', label: 'Reminders' },
-      { to: '/pulse/team', label: 'Team Performance' },
-    ],
-  },
-  {
     label: 'Deal-to-Billing Ops',
     items: [
       { to: '/pulse/summary', label: 'Summary' },
-      { to: '/pulse/pipeline', label: 'Pipeline' },
       { to: '/pulse/po-contracts', label: 'PO & Contracts' },
+    ],
+  },
+  {
+    label: 'CRM',
+    items: [
+      { to: '/pulse/opportunities', label: 'Opportunities' },
+      { to: '/pulse/reminders', label: 'Reminders' },
+      { to: '/pulse/team', label: 'Team Performance' },
+      { to: '/pulse/contacts', label: 'Contacts' },
     ],
   },
 ]
@@ -36,11 +35,10 @@ const PAGE_TITLES: Record<string, string> = {
   '/pulse/reminders': 'Reminders',
   '/pulse/team': 'Team Performance',
   '/pulse/summary': 'Ops Summary',
-  '/pulse/pipeline': 'Pipeline',
   '/pulse/po-contracts': 'PO & Contracts',
 }
 
-const DATE_RANGE_PATHS = ['/pulse/team', '/pulse/summary', '/pulse/pipeline', '/pulse/po-contracts']
+const DATE_RANGE_PATHS = ['/pulse/team', '/pulse/summary', '/pulse/po-contracts']
 
 function pageTitleFor(pathname: string): string {
   if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname]

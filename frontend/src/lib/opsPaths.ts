@@ -11,7 +11,7 @@ export interface OpsPaths {
 const PULSE_PATHS: OpsPaths = {
   inPulse: true,
   summary: '/pulse/summary',
-  pipeline: '/pulse/pipeline',
+  pipeline: '/pulse/summary',
   deals: '/pulse/po-contracts',
   deal: (id) => `/pulse/po-contracts/${id}`,
 }
@@ -19,7 +19,7 @@ const PULSE_PATHS: OpsPaths = {
 const OPS_PATHS: OpsPaths = {
   inPulse: false,
   summary: '/ops',
-  pipeline: '/ops/pipeline',
+  pipeline: '/ops',
   deals: '/deals',
   deal: (id) => `/deals/${id}`,
 }

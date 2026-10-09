@@ -59,12 +59,6 @@ const BriefcaseIcon = () => (
   </svg>
 )
 
-const FunnelIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M3 4h18l-7 8v6l-4 2v-8z" />
-  </svg>
-)
-
 const LogoutIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -74,7 +68,6 @@ const LogoutIcon = () => (
 
 const navItems: NavItem[] = [
   { label: 'Summary', path: '/ops', module: 'dashboard', icon: <GridIcon /> },
-  { label: 'Pipeline', path: '/ops/pipeline', module: 'pulse', icon: <FunnelIcon /> },
   { label: 'PO & Contracts', path: '/deals', module: 'deals', icon: <BriefcaseIcon /> },
 ]
 
@@ -184,7 +177,6 @@ export default function Layout() {
   const techpay = location.pathname.startsWith('/finance')
   const showDateRange =
     location.pathname === '/ops' ||
-    location.pathname === '/ops/pipeline' ||
     location.pathname === '/deals' ||
     location.pathname.startsWith('/deals/') ||
     location.pathname.startsWith('/finance') ||
