@@ -337,7 +337,12 @@ function financeDetail(key: FinanceDetailKey, ctx: DetailContext): DetailContent
       key: row.id,
       label: `${row.invoice_number} · ${row.customer_name}`,
       value: money(row.amount),
-      hint: `${row.days_pending} days pending`,
+      hint:
+        row.days_pending > 0
+          ? `${row.days_pending} days past due`
+          : row.days_pending === 0
+            ? 'Due today'
+            : `Due in ${-row.days_pending} days`,
     }))
   switch (key) {
     case 'invoiced':
@@ -366,14 +371,14 @@ function financeDetail(key: FinanceDetailKey, ctx: DetailContext): DetailContent
     case 'receivables':
       return {
         title: 'Receivables',
-        action: finLink(ctx, 'View outstanding invoices', '/finance/invoices?status=outstanding'),
+        action: finLink(ctx, 'View due invoices', '/finance/invoices?status=due'),
         body: (
           <>
             <DrawerGrid>
               <DrawerStat label="Total" value={money(f.receivables.total)} />
-              <DrawerStat label="Due 0–7 days" value={money(f.receivables.due_0_7)} />
-              <DrawerStat label="Due 8–30 days" value={money(f.receivables.due_8_30)} tone="warning" />
-              <DrawerStat label="Overdue 30+" value={money(f.receivables.overdue)} tone="danger" />
+              <DrawerStat label="Due in 0–7 days" value={money(f.receivables.due_0_7)} />
+              <DrawerStat label="Due later" value={money(f.receivables.due_8_30)} tone="warning" />
+              <DrawerStat label="Overdue" value={money(f.receivables.overdue)} tone="danger" />
             </DrawerGrid>
             <DrawerSection title="Coming due">
               <DrawerRows rows={invoiceRows(f.receivables.due_invoices.slice(0, 8))} empty="No invoices coming due." />
@@ -384,7 +389,7 @@ function financeDetail(key: FinanceDetailKey, ctx: DetailContext): DetailContent
     case 'overdue':
       return {
         title: 'Overdue receivables',
-        subtitle: 'Unpaid for more than 30 days past due date',
+        subtitle: 'Not received and past the due date',
         action: finLink(ctx, 'View overdue invoices', '/finance/invoices?status=overdue'),
         body: (
           <>
@@ -443,7 +448,7 @@ function financeDetail(key: FinanceDetailKey, ctx: DetailContext): DetailContent
     case 'payables':
       return {
         title: 'Payables pending',
-        action: finLink(ctx, 'View outstanding payables', '/finance/payables?status=pending'),
+        action: finLink(ctx, 'View payables', '/finance/payables'),
         body: (
           <>
             <DrawerGrid>

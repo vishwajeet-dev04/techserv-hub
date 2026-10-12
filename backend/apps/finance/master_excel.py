@@ -8,6 +8,7 @@ from openpyxl import Workbook
 from rest_framework.exceptions import ValidationError as DrfValidationError
 
 from apps.finance.models import FinanceClient, FinanceVendor
+from apps.finance.workspace import scoped, workspace_stamp
 from apps.pulse.excel import (
     _add_list_validation,
     _autosize,
@@ -109,7 +110,7 @@ def _build_workbook(model, rows: list[list]) -> bytes:
 
 def _export(model) -> bytes:
     columns = _columns_for(model)
-    rows = [[_cell_value(obj, field) for _, field in columns] for obj in model.objects.order_by('name')]
+    rows = [[_cell_value(obj, field) for _, field in columns] for obj in scoped(model.objects).order_by('name')]
     return _build_workbook(model, rows)
 
 
@@ -203,7 +204,7 @@ def _import(model, serializer_class, content: bytes) -> dict:
         if not data['name']:
             errors.append({'row': excel_row, 'message': 'Name is required.'})
             continue
-        existing = model.objects.filter(name__iexact=' '.join(data['name'].split())).first()
+        existing = scoped(model.objects).filter(name__iexact=' '.join(data['name'].split())).first()
         if existing:
             data['name'] = existing.name
         serializer = serializer_class(existing, data=data) if existing else serializer_class(data=data)
@@ -212,7 +213,10 @@ def _import(model, serializer_class, content: bytes) -> dict:
         except DrfValidationError as exc:
             errors.append({'row': excel_row, 'message': _flatten_error(exc)})
             continue
-        serializer.save()
+        if existing:
+            serializer.save()
+        else:
+            serializer.save(**workspace_stamp())
         if existing:
             updated += 1
         else:

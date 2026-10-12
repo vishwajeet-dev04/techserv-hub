@@ -165,16 +165,26 @@ class PurchaseOrderStatus(models.TextChoices):
 
 
 class InvoiceStatus(models.TextChoices):
-    DRAFT = 'DRAFT', 'Draft'
-    SENT = 'SENT', 'Invoice Sent'
-    PARTIAL = 'PARTIAL', 'Partial'
-    PAID = 'PAID', 'Paid'
+    DUE = 'DUE', 'Due'
     OVERDUE = 'OVERDUE', 'Overdue'
+    RECEIVED = 'RECEIVED', 'Received'
 
 
 class PayableStatus(models.TextChoices):
-    PENDING = 'PENDING', 'Pending'
+    DUE = 'DUE', 'Due'
+    OVERDUE = 'OVERDUE', 'Overdue'
     PAID = 'PAID', 'Paid'
+
+
+OPEN_STATUSES = ('DUE', 'OVERDUE')
+
+
+def auto_open_status(due_date, today=None):
+    """Due or Overdue from the due date; settled statuses are only set by hand."""
+    from django.utils import timezone
+
+    today = today or timezone.localdate()
+    return 'OVERDUE' if due_date and due_date < today else 'DUE'
 
 
 PAYABLE_TERMS_DAYS = 30
@@ -207,7 +217,15 @@ class CapitalType(models.TextChoices):
     LOAN_TAKEN = 'LOAN_TAKEN', 'Loans Taken'
 
 
-class PurchaseOrder(models.Model):
+class WorkspaceRecord(models.Model):
+    workspace_company = models.CharField(max_length=32, default='techserv', db_index=True)
+    workspace_region = models.CharField(max_length=32, default='india', db_index=True)
+
+    class Meta:
+        abstract = True
+
+
+class PurchaseOrder(WorkspaceRecord):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     po_number = models.CharField(max_length=80, db_index=True)
     company = models.ForeignKey(
@@ -245,7 +263,7 @@ class PurchaseOrder(models.Model):
         return self.po_number
 
 
-class Invoice(models.Model):
+class Invoice(WorkspaceRecord):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     invoice_number = models.CharField(max_length=80, db_index=True)
     purchase_order = models.ForeignKey(
@@ -275,9 +293,10 @@ class Invoice(models.Model):
     status = models.CharField(
         max_length=20,
         choices=InvoiceStatus.choices,
-        default=InvoiceStatus.SENT,
+        default=InvoiceStatus.DUE,
         db_index=True,
     )
+    status_manual = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -292,6 +311,11 @@ class Invoice(models.Model):
     def save(self, *args, **kwargs):
         if self.invoice_date and not self.due_date:
             self.due_date = payable_due_date(self.invoice_date)
+        if not self.status_manual and self.status in OPEN_STATUSES:
+            self.status = auto_open_status(self.due_date)
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and 'status' not in update_fields:
+            kwargs['update_fields'] = [*update_fields, 'status']
         super().save(*args, **kwargs)
 
     @property
@@ -299,7 +323,7 @@ class Invoice(models.Model):
         return self.amount - self.amount_received
 
 
-class Payable(models.Model):
+class Payable(WorkspaceRecord):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     vendor = models.CharField(max_length=255, db_index=True)
     category = models.CharField(max_length=100, blank=True)
@@ -315,9 +339,10 @@ class Payable(models.Model):
     status = models.CharField(
         max_length=20,
         choices=PayableStatus.choices,
-        default=PayableStatus.PENDING,
+        default=PayableStatus.DUE,
         db_index=True,
     )
+    status_manual = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -332,6 +357,11 @@ class Payable(models.Model):
     def save(self, *args, **kwargs):
         if self.invoice_date and not self.due_date:
             self.due_date = payable_due_date(self.invoice_date)
+        if not self.status_manual and self.status in OPEN_STATUSES:
+            self.status = auto_open_status(self.due_date)
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None and 'status' not in update_fields:
+            kwargs['update_fields'] = [*update_fields, 'status']
         super().save(*args, **kwargs)
 
 
@@ -399,7 +429,53 @@ class InvoiceReminderEmailLog(models.Model):
         return f'{self.offset_days}d {self.invoice_id}'
 
 
-class CashflowEntry(models.Model):
+class FinanceStatusChange(models.Model):
+    """Manual status change on a receivable or payable, with who made it."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='status_changes',
+    )
+    payable = models.ForeignKey(
+        Payable,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='status_changes',
+    )
+    from_status = models.CharField(max_length=20)
+    to_status = models.CharField(max_length=20)
+    note = models.TextField(blank=True)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='finance_status_changes',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'finance_status_changes'
+        ordering = ['-created_at']
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(invoice__isnull=False, payable__isnull=True)
+                    | models.Q(invoice__isnull=True, payable__isnull=False)
+                ),
+                name='finance_status_change_one_target',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.from_status} -> {self.to_status}'
+
+
+class CashflowEntry(WorkspaceRecord):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     account = models.CharField(
         max_length=10,
@@ -431,7 +507,7 @@ class CashflowEntry(models.Model):
         return f'{self.direction} {self.category} {self.amount}'
 
 
-class CapitalEntry(models.Model):
+class CapitalEntry(WorkspaceRecord):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     capital_type = models.CharField(max_length=30, choices=CapitalType.choices, db_index=True)
     counterparty = models.CharField(max_length=255)
@@ -450,7 +526,7 @@ class CapitalEntry(models.Model):
         return f'{self.capital_type} {self.counterparty}'
 
 
-class MisUpload(models.Model):
+class MisUpload(WorkspaceRecord):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     file_name = models.CharField(max_length=255)
     file_type = models.CharField(max_length=10)
@@ -479,7 +555,7 @@ class ComplianceStatus(models.TextChoices):
     NOT_APPLICABLE = 'NOT_APPLICABLE', 'Not Applicable'
 
 
-class ComplianceItem(models.Model):
+class ComplianceItem(WorkspaceRecord):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=500)
     form_name = models.CharField(max_length=255, blank=True)
@@ -548,7 +624,7 @@ class ComplianceReminderEmailLog(models.Model):
         return f'{self.offset_days}d {self.compliance_item_id} {self.recipient_email}'
 
 
-class FinanceClient(models.Model):
+class FinanceClient(WorkspaceRecord):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, db_index=True)
     company = models.ForeignKey(
@@ -583,7 +659,7 @@ class FinanceClient(models.Model):
         return self.name
 
 
-class FinanceVendor(models.Model):
+class FinanceVendor(WorkspaceRecord):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255, db_index=True)
     category = models.CharField(max_length=100, blank=True)

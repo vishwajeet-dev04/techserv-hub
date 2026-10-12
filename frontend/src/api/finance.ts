@@ -18,8 +18,11 @@ import type {
   OpsSummary,
   BankPosition,
   FinanceClient,
+  FinanceStatusChange,
   FinanceVendor,
   MasterDataListParams,
+  PayableStatus,
+  ReceivableStatus,
   PaginatedResponse,
   PulseImportResult,
   PurchaseOrder,
@@ -153,6 +156,22 @@ export const financeApi = {
     const response = await apiClient.get<PaginatedResponse<OpsPayable>>('/finance/payables/', {
       params: cleanParams(params),
     })
+    return response.data
+  },
+  changeInvoiceStatus: async (id: string, status: ReceivableStatus, note: string): Promise<OpsInvoice> => {
+    const response = await apiClient.post<OpsInvoice>(`/finance/invoices/${id}/status/`, { status, note })
+    return response.data
+  },
+  changePayableStatus: async (id: string, status: PayableStatus, note: string): Promise<OpsPayable> => {
+    const response = await apiClient.post<OpsPayable>(`/finance/payables/${id}/status/`, { status, note })
+    return response.data
+  },
+  invoiceStatusHistory: async (id: string): Promise<FinanceStatusChange[]> => {
+    const response = await apiClient.get<FinanceStatusChange[]>(`/finance/invoices/${id}/status-history/`)
+    return response.data
+  },
+  payableStatusHistory: async (id: string): Promise<FinanceStatusChange[]> => {
+    const response = await apiClient.get<FinanceStatusChange[]>(`/finance/payables/${id}/status-history/`)
     return response.data
   },
   listCashflow: async (params?: LedgerListParams): Promise<PaginatedResponse<CashflowRow>> => {

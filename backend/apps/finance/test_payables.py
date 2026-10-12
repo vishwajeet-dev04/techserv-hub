@@ -36,7 +36,7 @@ def _payable(**overrides) -> Payable:
         'invoice_number': f'INV-{Payable.objects.count() + 1}',
         'total_amount': Decimal('118000'),
         'payable_amount': Decimal('118000'),
-        'status': PayableStatus.PENDING,
+        'status': PayableStatus.DUE,
     }
     defaults.update(overrides)
     return Payable.objects.create(**defaults)
@@ -167,7 +167,7 @@ def _invoice(**overrides) -> Invoice:
         'customer_name': 'Acme',
         'amount': Decimal('2500'),
         'invoice_date': date(2026, 8, 5),
-        'status': InvoiceStatus.SENT,
+        'status': InvoiceStatus.DUE,
     }
     defaults.update(overrides)
     return Invoice.objects.create(**defaults)
@@ -196,7 +196,7 @@ class InvoiceReminderTests(TestCase):
             invoice_number='PAID1',
             customer_name='Paid Co',
             due_date=self.today + timedelta(days=3),
-            status=InvoiceStatus.PAID,
+            status=InvoiceStatus.RECEIVED,
         )
         result = send_invoice_due_reminders(as_of_date=self.today)
         self.assertEqual(result.sent, 2)

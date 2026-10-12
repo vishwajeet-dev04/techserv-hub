@@ -23,8 +23,8 @@ export interface Workspace {
 
 const REGION_SET = (activeIds: string[] = []): Region[] => [
   { id: 'india', name: 'India', code: 'IN', active: activeIds.includes('india') },
-  { id: 'singapore', name: 'Singapore', code: 'SG', active: activeIds.includes('singapore') },
   { id: 'malaysia', name: 'Malaysia', code: 'MY', active: activeIds.includes('malaysia') },
+  { id: 'singapore', name: 'Singapore', code: 'SG', active: activeIds.includes('singapore') },
 ]
 
 export const COMPANIES: Company[] = [
@@ -41,8 +41,8 @@ export const COMPANIES: Company[] = [
     name: 'TechPay.ai',
     code: 'TP',
     tagline: 'Payments, treasury & financial platforms',
-    active: false,
-    regions: REGION_SET(),
+    active: true,
+    regions: REGION_SET(['india']),
   },
 ]
 
@@ -104,6 +104,10 @@ function subscribe(fn: () => void) {
 
 export function useWorkspace(): Workspace | null {
   return useSyncExternalStore(subscribe, getWorkspace, getWorkspace)
+}
+
+export function isTechPay(ws: Workspace | null): boolean {
+  return ws?.company === 'techpay'
 }
 
 export function workspaceLabel(ws: Workspace | null): string | null {

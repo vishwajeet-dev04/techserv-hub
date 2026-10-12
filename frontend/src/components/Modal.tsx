@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 export const fieldClass =
   'w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink placeholder:text-subtle focus:outline-none focus:border-brand focus:ring-2 focus-visible:ring-2 focus-visible:ring-brand transition-colors'
@@ -41,7 +42,8 @@ export default function Modal({ open, title, onClose, children, footer, wide, st
 
   if (!open) return null
 
-  return (
+  // Portal to body: a blurred or transformed ancestor would otherwise trap the fixed overlay inside it.
+  return createPortal(
     <div
       className={`fixed inset-0 flex items-end sm:items-center justify-center ${topmost ? 'z-[70]' : stacked ? 'z-[60]' : 'z-50'}`}
       role="dialog"
@@ -80,6 +82,7 @@ export default function Modal({ open, title, onClose, children, footer, wide, st
           </div>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

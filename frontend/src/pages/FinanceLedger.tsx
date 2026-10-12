@@ -30,6 +30,7 @@ import {
   formatInr,
   useFinanceFilters,
 } from '../components/finance/FinancePageShell'
+import { FinanceStatusCell } from '../components/finance/FinanceStatusCell'
 import { PulsePaginationFooter } from '../components/pulse/PulseTableShell'
 
 const fmt = formatInr
@@ -471,29 +472,57 @@ export function CashflowPage({ account = 'CURRENT' }: { account?: CashflowAccoun
   )
 }
 
-type PayableTab = 'ALL' | 'PAID' | 'PENDING'
-type InvoiceTab = 'all' | 'outstanding' | 'overdue' | 'paid'
+type PayableTab = 'ALL' | 'DUE' | 'OVERDUE' | 'PAID'
+type InvoiceTab = 'ALL' | 'DUE' | 'OVERDUE' | 'RECEIVED'
 
-const INVOICE_TABS: { key: InvoiceTab; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'outstanding', label: 'Outstanding' },
-  { key: 'overdue', label: 'Overdue' },
-  { key: 'paid', label: 'Paid' },
+const PAYABLE_TABS: { key: PayableTab; label: string }[] = [
+  { key: 'ALL', label: 'All' },
+  { key: 'DUE', label: 'Due' },
+  { key: 'OVERDUE', label: 'Overdue' },
+  { key: 'PAID', label: 'Paid' },
 ]
 
-/** Mirrors the backend receivables rule: unpaid balance pending more than 30 days since due (or invoice) date. */
-function invoiceOverdue(row: OpsInvoice, today: Date): boolean {
-  if (row.status === 'PAID' || Number(row.balance) <= 0) return false
-  const since = new Date(`${row.due_date || row.invoice_date}T00:00:00`)
-  return (today.getTime() - since.getTime()) / 86_400_000 > 30
+const INVOICE_TABS: { key: InvoiceTab; label: string }[] = [
+  { key: 'ALL', label: 'All' },
+  { key: 'DUE', label: 'Due' },
+  { key: 'OVERDUE', label: 'Overdue' },
+  { key: 'RECEIVED', label: 'Received' },
+]
+
+/** Older deep links used outstanding/pending/paid before the Due/Overdue/Received statuses. */
+const LEGACY_STATUS: Record<string, string> = { OUTSTANDING: 'DUE', PENDING: 'DUE' }
+
+function normaliseStatus(raw: string, paidAlias: string): string {
+  const upper = raw.toUpperCase()
+  if (upper === 'PAID' || upper === 'RECEIVED') return paidAlias
+  return LEGACY_STATUS[upper] ?? upper
 }
 
-function matchesInvoiceTab(row: OpsInvoice, tab: InvoiceTab, today: Date): boolean {
-  const paid = row.status === 'PAID' || Number(row.balance) <= 0
-  if (tab === 'paid') return paid
-  if (tab === 'outstanding') return !paid
-  if (tab === 'overdue') return invoiceOverdue(row, today)
-  return true
+function StatusTabs<T extends string>({
+  tabs,
+  value,
+  onChange,
+}: {
+  tabs: { key: T; label: string }[]
+  value: T
+  onChange: (next: T) => void
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {tabs.map(({ key, label }) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onChange(key)}
+          className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${
+            value === key ? 'bg-brand text-white border-brand' : 'bg-surface text-muted border-line hover:text-ink'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 /** Status tab backed by `?status=` so other pages can deep-link into a filtered ledger. */
@@ -517,7 +546,7 @@ function useStatusParam<T extends string>(allowed: readonly T[], fallback: T, no
 
 /** Unpaid invoices: red once past due, amber inside the 3-day reminder window. */
 function invoiceDueTone(row: OpsInvoice, todayStart: number): string {
-  if (row.status === 'PAID' || !row.due_date) return 'text-muted'
+  if (row.status === 'RECEIVED' || !row.due_date) return 'text-muted'
   const days = (new Date(`${row.due_date}T00:00:00`).getTime() - todayStart) / 86_400_000
   if (days < 0) return 'text-danger font-medium'
   if (days <= 3) return 'text-warning font-medium'
@@ -535,7 +564,7 @@ function payableDueTone(row: OpsPayable, todayStart: number): string {
 
 export function PayablesPage() {
   const { filters, setFilters } = useFinanceFilters()
-  const [tab, setTab] = useStatusParam<PayableTab>(['ALL', 'PAID', 'PENDING'], 'ALL', (v) => v.toUpperCase())
+  const [tab, setTab] = useStatusParam<PayableTab>(['ALL', 'DUE', 'OVERDUE', 'PAID'], 'ALL', (v) => normaliseStatus(v, 'PAID'))
   const list = useQuery({
     queryKey: ['payables', filters.from, filters.to, filters.vendor, filters.search, tab],
     queryFn: () =>
@@ -577,7 +606,12 @@ export function PayablesPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <KpiCard label="Total Payable" value={fmt(kpi.total_payable || 0)} />
         <KpiCard label="Paid" value={fmt(kpi.total_paid || 0)} tone="in" hint={`${kpi.paid_count || 0} bills`} />
-        <KpiCard label="Outstanding" value={fmt(kpi.outstanding || 0)} tone="out" hint={`${kpi.pending_count || 0} bills`} />
+        <KpiCard
+          label="Outstanding"
+          value={fmt(kpi.outstanding || 0)}
+          tone="out"
+          hint={`${kpi.pending_count || 0} bills · ${kpi.overdue_count || 0} overdue (${fmt(kpi.overdue || 0)})`}
+        />
         <KpiCard label="TDS Deducted" value={fmt(kpi.tds_deducted || 0)} tone="net" />
       </div>
 
@@ -592,19 +626,8 @@ export function PayablesPage() {
         </div>
       ) : null}
 
-      <div className="mt-4 flex gap-2">
-        {(['ALL', 'PAID', 'PENDING'] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${
-              tab === key ? 'bg-brand text-white border-brand' : 'bg-surface text-muted border-line hover:text-ink'
-            }`}
-          >
-            {key === 'PENDING' ? 'Outstanding' : key === 'ALL' ? 'All' : 'Paid'}
-          </button>
-        ))}
+      <div className="mt-4">
+        <StatusTabs tabs={PAYABLE_TABS} value={tab} onChange={setTab} />
       </div>
 
       <div className="mt-4">
@@ -626,7 +649,9 @@ export function PayablesPage() {
                 <td className="px-5 py-3 text-sm tabular-nums">{fmt(row.total_amount)}</td>
                 <td className="px-5 py-3 text-sm font-medium tabular-nums">{fmt(row.payable_amount)}</td>
                 <td className={`px-5 py-3 text-sm whitespace-nowrap ${payableDueTone(row, todayStart)}`}>{row.due_date ?? '—'}</td>
-                <td className="px-5 py-3 text-sm"><StatusBadge status={row.status} /></td>
+                <td className="px-5 py-3 text-sm">
+                  <FinanceStatusCell kind="payable" row={row} title={`${row.vendor} · ${row.invoice_number}`} />
+                </td>
               </tr>
             ))}
           </TableWrap>
@@ -710,30 +735,27 @@ export function PurchaseOrdersPage() {
 
 export function InvoicesPage() {
   const { filters, setFilters } = useFinanceFilters()
+  const [tab, setTab] = useStatusParam<InvoiceTab>(['ALL', 'DUE', 'OVERDUE', 'RECEIVED'], 'ALL', (v) => normaliseStatus(v, 'RECEIVED'))
   const list = useQuery({
-    queryKey: ['invoices', filters.from, filters.to, filters.client, filters.search],
+    queryKey: ['invoices', filters.from, filters.to, filters.client, filters.search, tab],
     queryFn: () =>
       financeApi.listInvoices({
         from: filters.from,
         to: filters.to,
         client: filters.client,
         search: filters.search,
+        status: tab === 'ALL' ? '' : tab,
       }),
   })
   const summary = useQuery({
     queryKey: ['ledger-summary', 'invoices', filters.from, filters.to],
     queryFn: () => financeApi.ledgerSummary('invoices', { from: filters.from, to: filters.to }),
   })
-  const [tab, setTab] = useStatusParam<InvoiceTab>(['all', 'outstanding', 'overdue', 'paid'], 'all', (v) => v.toLowerCase())
-  const allRows = useMemo<OpsInvoice[]>(() => list.data?.results ?? [], [list.data])
-  const rows = useMemo(() => {
-    const today = new Date()
-    return allRows.filter((row) => matchesInvoiceTab(row, tab, today))
-  }, [allRows, tab])
+  const rows = useMemo<OpsInvoice[]>(() => list.data?.results ?? [], [list.data])
   const kpi = (summary.data || {}) as LedgerInvoicesSummary
   const clients = useMemo(
-    () => Array.from(new Set(allRows.map((r) => r.customer_name).filter(Boolean))).sort(),
-    [allRows],
+    () => Array.from(new Set(rows.map((r) => r.customer_name).filter(Boolean))).sort(),
+    [rows],
   )
   const todayStart = useMemo(() => {
     const today = new Date()
@@ -762,19 +784,8 @@ export function InvoicesPage() {
         <KpiCard label="GST" value={fmt(kpi.gst || 0)} tone="net" />
         <KpiCard label="TDS" value={fmt(kpi.tds || 0)} tone="out" />
       </div>
-      <div className="mb-4 flex flex-wrap gap-2">
-        {INVOICE_TABS.map(({ key, label }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg border ${
-              tab === key ? 'bg-brand text-white border-brand' : 'bg-surface text-muted border-line hover:text-ink'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="mb-4">
+        <StatusTabs tabs={INVOICE_TABS} value={tab} onChange={setTab} />
       </div>
       {list.isLoading ? (
         <p className="p-5 text-sm text-subtle">Loading…</p>
@@ -791,7 +802,9 @@ export function InvoicesPage() {
               <td className="px-5 py-3 text-sm tabular-nums">{fmt(row.tds_amount)}</td>
               <td className="px-5 py-3 text-sm tabular-nums">{fmt(row.gross_payable ?? row.amount)}</td>
               <td className="px-5 py-3 text-sm font-medium tabular-nums">{fmt(row.net_payable ?? row.amount)}</td>
-              <td className="px-5 py-3 text-sm"><StatusBadge status={row.status} /></td>
+              <td className="px-5 py-3 text-sm">
+                <FinanceStatusCell kind="invoice" row={row} title={`${row.invoice_number} · ${row.customer_name}`} />
+              </td>
             </tr>
           ))}
         </TableWrap>

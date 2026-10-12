@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { emitPermissionDenied } from './permissionNotice'
-import { clearWorkspace } from '../lib/workspaces'
+import { clearWorkspace, getWorkspace } from '../lib/workspaces'
 
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -10,6 +10,9 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
+  const workspace = getWorkspace()
+  config.headers['X-Workspace-Company'] = workspace?.company ?? 'techserv'
+  config.headers['X-Workspace-Region'] = workspace?.region ?? 'india'
   if (config.data instanceof FormData) {
     delete config.headers['Content-Type']
   }

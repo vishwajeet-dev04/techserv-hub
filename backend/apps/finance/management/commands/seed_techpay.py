@@ -66,6 +66,8 @@ class Command(BaseCommand):
         for number, firm, customer, category, po_date, value, monthly in pos:
             obj, _ = PurchaseOrder.objects.update_or_create(
                 po_number=number,
+                workspace_company='techpay',
+                workspace_region='india',
                 defaults={
                     'company': firm,
                     'customer_name': customer,
@@ -82,20 +84,22 @@ class Command(BaseCommand):
             po_map[number] = obj
 
         invoices = [
-            ('INV-1042', po_map['PO-CHV-006'], chavans, 'Chavans Technologies', Decimal('612000'), Decimal('0'), date(2026, 8, 26), date(2026, 8, 26), InvoiceStatus.SENT),
-            ('INV-1043', po_map['PO-SUN-007'], sunfinity, 'Sunfinity Technology Solutions', Decimal('524124'), Decimal('0'), date(2026, 8, 27), date(2026, 8, 27), InvoiceStatus.SENT),
-            ('INV-1038', po_map['PO-SAV-002'], savex, 'Savex Technologies', Decimal('210158'), Decimal('0'), date(2026, 8, 10), date(2026, 8, 10), InvoiceStatus.SENT),
-            ('INV-1031', po_map['PO-CHV-006'], chavans, 'New Era Informatique', Decimal('400000'), Decimal('0'), date(2026, 8, 28), date(2026, 8, 28), InvoiceStatus.SENT),
+            ('INV-1042', po_map['PO-CHV-006'], chavans, 'Chavans Technologies', Decimal('612000'), Decimal('0'), date(2026, 8, 26), date(2026, 8, 26), InvoiceStatus.DUE),
+            ('INV-1043', po_map['PO-SUN-007'], sunfinity, 'Sunfinity Technology Solutions', Decimal('524124'), Decimal('0'), date(2026, 8, 27), date(2026, 8, 27), InvoiceStatus.DUE),
+            ('INV-1038', po_map['PO-SAV-002'], savex, 'Savex Technologies', Decimal('210158'), Decimal('0'), date(2026, 8, 10), date(2026, 8, 10), InvoiceStatus.DUE),
+            ('INV-1031', po_map['PO-CHV-006'], chavans, 'New Era Informatique', Decimal('400000'), Decimal('0'), date(2026, 8, 28), date(2026, 8, 28), InvoiceStatus.DUE),
             ('INV-0881', po_map['PO-RBI-008'], red_baron, 'RED BARON INTEGRATED SERVICES', Decimal('2810392.23'), Decimal('0'), date(2025, 8, 18), date(2025, 9, 17), InvoiceStatus.OVERDUE),
             ('INV-0912', po_map['PO-TNG-009'], tangent, 'Tangent Ideas & Technologies', Decimal('1200000'), Decimal('0'), date(2025, 9, 22), date(2025, 10, 22), InvoiceStatus.OVERDUE),
             ('INV-0960', po_map['PO-SPR-010'], sprouts, 'Sprouts Software Technologies', Decimal('1000000'), Decimal('0'), date(2025, 11, 12), date(2025, 12, 12), InvoiceStatus.OVERDUE),
-            ('INV-1001', po_map['PO-VEE-001'], veeam, 'Veeam', Decimal('1760000'), Decimal('1760000'), date(2026, 4, 1), date(2026, 4, 30), InvoiceStatus.PAID),
-            ('INV-1010', po_map['PO-RED-004'], redington, 'Redington', Decimal('2800000'), Decimal('2800000'), date(2026, 5, 15), date(2026, 6, 14), InvoiceStatus.PAID),
-            ('INV-1020', po_map['PO-LEN-003'], lenovo, 'Lenovo Enterprise', Decimal('2048065'), Decimal('2048065'), date(2026, 6, 1), date(2026, 6, 30), InvoiceStatus.PAID),
+            ('INV-1001', po_map['PO-VEE-001'], veeam, 'Veeam', Decimal('1760000'), Decimal('1760000'), date(2026, 4, 1), date(2026, 4, 30), InvoiceStatus.RECEIVED),
+            ('INV-1010', po_map['PO-RED-004'], redington, 'Redington', Decimal('2800000'), Decimal('2800000'), date(2026, 5, 15), date(2026, 6, 14), InvoiceStatus.RECEIVED),
+            ('INV-1020', po_map['PO-LEN-003'], lenovo, 'Lenovo Enterprise', Decimal('2048065'), Decimal('2048065'), date(2026, 6, 1), date(2026, 6, 30), InvoiceStatus.RECEIVED),
         ]
         for number, po, firm, customer, amount, received, inv_date, due, status in invoices:
             Invoice.objects.update_or_create(
                 invoice_number=number,
+                workspace_company='techpay',
+                workspace_region='india',
                 defaults={
                     'purchase_order': po,
                     'company': firm,
@@ -118,6 +122,8 @@ class Command(BaseCommand):
         for vendor, category, number, amount, invoice_date in payables:
             Payable.objects.update_or_create(
                 invoice_number=number,
+                workspace_company='techpay',
+                workspace_region='india',
                 defaults={
                     'vendor': vendor,
                     'category': category,
@@ -128,7 +134,7 @@ class Command(BaseCommand):
                     'payable_amount': amount,
                     'invoice_date': invoice_date,
                     'due_date': payable_due_date(invoice_date),
-                    'status': PayableStatus.PENDING,
+                    'status': PayableStatus.DUE,
                 },
             )
 
@@ -146,6 +152,8 @@ class Command(BaseCommand):
                 entry_date=entry_date,
                 category=category,
                 entity=entity,
+                workspace_company='techpay',
+                workspace_region='india',
                 defaults={
                     'direction': direction,
                     'bucket': bucket,
@@ -163,5 +171,7 @@ class Command(BaseCommand):
             CapitalEntry.objects.update_or_create(
                 capital_type=ctype,
                 counterparty=party,
+                workspace_company='techpay',
+                workspace_region='india',
                 defaults={'amount': amount, 'entry_date': when, 'status': 'Active'},
             )

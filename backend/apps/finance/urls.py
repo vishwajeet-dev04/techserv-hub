@@ -35,6 +35,10 @@ from .views import (
     vendors_export,
     vendors_template,
     vendors_import,
+    invoice_status,
+    invoice_status_history,
+    payable_status,
+    payable_status_history,
 )
 
 urlpatterns = [
@@ -54,8 +58,12 @@ urlpatterns = [
     path('purchase-orders/<uuid:pk>/', PurchaseOrderDetailView.as_view(), name='po-detail'),
     path('invoices/', InvoiceListCreateView.as_view(), name='invoice-list'),
     path('invoices/<uuid:pk>/', InvoiceDetailView.as_view(), name='invoice-detail'),
+    path('invoices/<uuid:pk>/status/', invoice_status, name='invoice-status'),
+    path('invoices/<uuid:pk>/status-history/', invoice_status_history, name='invoice-status-history'),
     path('payables/', PayableListCreateView.as_view(), name='payable-list'),
     path('payables/<uuid:pk>/', PayableDetailView.as_view(), name='payable-detail'),
+    path('payables/<uuid:pk>/status/', payable_status, name='payable-status'),
+    path('payables/<uuid:pk>/status-history/', payable_status_history, name='payable-status-history'),
     path('cashflow/', CashflowEntryListCreateView.as_view(), name='cashflow-list'),
     path('cashflow/<uuid:pk>/', CashflowEntryDetailView.as_view(), name='cashflow-detail'),
     path('capital/', CapitalEntryListCreateView.as_view(), name='capital-list'),

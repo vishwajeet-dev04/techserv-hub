@@ -90,7 +90,7 @@ def build_payable_reminder_email(payables: list[Payable], *, offset_days: int, d
 def _pending_unreminded(*, offset_days: int, due_date: date) -> list[Payable]:
     already = PayableReminderEmailLog.objects.filter(offset_days=offset_days, due_date=due_date).values('payable_id')
     return list(
-        Payable.objects.filter(status=PayableStatus.PENDING, due_date=due_date)
+        Payable.objects.filter(status__in=[PayableStatus.DUE, PayableStatus.OVERDUE], due_date=due_date)
         .exclude(id__in=already)
         .order_by('vendor', 'invoice_number')
     )

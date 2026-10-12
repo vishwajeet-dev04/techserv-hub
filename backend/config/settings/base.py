@@ -48,6 +48,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.finance.middleware.FinanceWorkspaceMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -207,6 +208,10 @@ CELERY_BEAT_SCHEDULE = {
     'finance-compliance-due-reminders-daily': {
         'task': 'finance.send_compliance_due_reminders',
         'schedule': crontab(hour=9, minute=0),
+    },
+    'finance-refresh-auto-statuses-daily': {
+        'task': 'finance.refresh_auto_statuses',
+        'schedule': crontab(hour=0, minute=5),
     },
 }
 

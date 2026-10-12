@@ -7,6 +7,7 @@ from decimal import Decimal
 from django.db.models import Sum
 
 from apps.finance.models import CashflowAccount, CashflowDirection, CashflowEntry
+from apps.finance.workspace import scoped
 
 
 def _money(value) -> float:
@@ -18,7 +19,7 @@ def _sum_amount(qs) -> Decimal:
 
 
 def _account_position(account: str, date_from: str | None, date_to: str | None) -> dict:
-    base = CashflowEntry.objects.filter(account=account)
+    base = scoped(CashflowEntry.objects).filter(account=account)
     qs = base
     if date_from:
         qs = qs.filter(entry_date__gte=date_from)

@@ -66,6 +66,20 @@ html.dark {
   --color-chart-7: #fb923c;
 }
 
+html[data-brand='techpay'] {
+  --color-brand: #902888;
+  --color-brand-hover: #7a2074;
+  --color-brand-soft: #f8e8f6;
+  --color-chart-1: #902888;
+}
+
+html.dark[data-brand='techpay'] {
+  --color-brand: #d06bc4;
+  --color-brand-hover: #e09ad4;
+  --color-brand-soft: #3b1238;
+  --color-chart-1: #d06bc4;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .modal-backdrop,
   .modal-panel,

@@ -9,6 +9,7 @@ from typing import Iterable
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import Lower, Trim
 
+from apps.finance.workspace import scoped
 from apps.finance.models import (
     FinanceClient,
     FinanceVendor,
@@ -30,7 +31,7 @@ def client_stats(clients: Iterable[FinanceClient]) -> dict:
     company_by_name: dict[str, object] = {}
 
     linked_invoices = (
-        Invoice.objects.filter(company__isnull=False)
+        scoped(Invoice.objects).filter(company__isnull=False)
         .values('company_id', 'company__name')
         .annotate(invoiced=Sum('amount'), paid=Sum('amount_received'))
     )
@@ -41,7 +42,7 @@ def client_stats(clients: Iterable[FinanceClient]) -> dict:
         company_by_name.setdefault((row['company__name'] or '').strip().lower(), row['company_id'])
 
     linked_pos = (
-        PurchaseOrder.objects.filter(company__isnull=False, status=PurchaseOrderStatus.ACTIVE)
+        scoped(PurchaseOrder.objects).filter(company__isnull=False, status=PurchaseOrderStatus.ACTIVE)
         .values('company_id', 'company__name')
         .annotate(count=Count('id'))
     )
@@ -50,7 +51,7 @@ def client_stats(clients: Iterable[FinanceClient]) -> dict:
         company_by_name.setdefault((row['company__name'] or '').strip().lower(), row['company_id'])
 
     loose_invoices = (
-        Invoice.objects.filter(company__isnull=True)
+        scoped(Invoice.objects).filter(company__isnull=True)
         .annotate(key=Lower(Trim('customer_name')))
         .values('key')
         .annotate(invoiced=Sum('amount'), paid=Sum('amount_received'))
@@ -61,7 +62,7 @@ def client_stats(clients: Iterable[FinanceClient]) -> dict:
         bucket['paid'] += row['paid'] or 0
 
     loose_pos = (
-        PurchaseOrder.objects.filter(company__isnull=True, status=PurchaseOrderStatus.ACTIVE)
+        scoped(PurchaseOrder.objects).filter(company__isnull=True, status=PurchaseOrderStatus.ACTIVE)
         .annotate(key=Lower(Trim('customer_name')))
         .values('key')
         .annotate(count=Count('id'))
@@ -87,11 +88,11 @@ def client_stats(clients: Iterable[FinanceClient]) -> dict:
 def vendor_stats(vendors: Iterable[FinanceVendor]) -> dict:
     grouped = {
         row['key']: row
-        for row in Payable.objects.annotate(key=Lower(Trim('vendor')))
+        for row in scoped(Payable.objects).annotate(key=Lower(Trim('vendor')))
         .values('key')
         .annotate(
             total=Sum('payable_amount'),
-            outstanding=Sum('payable_amount', filter=Q(status=PayableStatus.PENDING)),
+            outstanding=Sum('payable_amount', filter=Q(status__in=[PayableStatus.DUE, PayableStatus.OVERDUE])),
         )
     }
     result = {}

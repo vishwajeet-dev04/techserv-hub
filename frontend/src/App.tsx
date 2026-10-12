@@ -7,6 +7,7 @@ import { onPermissionDenied } from './api/permissionNotice'
 import { notify } from './lib/notify'
 import Layout from './components/Layout'
 import HubShell from './components/HubShell'
+import { WorkspaceBrand } from './components/Logo'
 import SettingsLayout from './components/SettingsLayout'
 import RoleProtectedRoute from './components/RoleProtectedRoute'
 import WorkspaceGuard from './components/WorkspaceGuard'
@@ -65,8 +66,9 @@ export default function App() {
   return (
     <AuthProvider>
       <DateRangeProvider>
+        <WorkspaceBrand />
         <Toaster
-          position="top-right"
+          position="top-center"
           containerStyle={{ zIndex: 100000 }}
           toastOptions={{
             duration: 4000,

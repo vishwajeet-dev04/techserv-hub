@@ -267,6 +267,13 @@ SAMPLE_MIS_V2 = (
     / 'Sample data for MIS v2.xlsx'
 )
 
+DASHBOARD_SAMPLE_MIS = (
+    Path(__file__).resolve().parents[3]
+    / 'PROJECT_CONTEXT'
+    / 'Files'
+    / 'Dashboard Sample MIS.xlsx'
+)
+
 
 class MisImportParserTests(APITestCase):
     def setUp(self):
@@ -311,31 +318,39 @@ class MisImportParserTests(APITestCase):
         self.assertEqual(Payable.objects.count(), 11)
         self.assertEqual(CashflowEntry.objects.count(), 22)
 
-    def test_bank_match_sets_payable_and_invoice_status(self):
+    def test_import_sets_open_status_and_keeps_manual_status(self):
         from apps.finance.mis_import import import_mis_path
-        from apps.finance.models import Invoice, InvoiceStatus, Payable, PayableStatus
+        from apps.finance.models import (
+            OPEN_STATUSES,
+            FinanceStatusChange,
+            Invoice,
+            InvoiceStatus,
+            Payable,
+            PayableStatus,
+        )
+        from apps.finance.status import change_status
 
         import_mis_path(SAMPLE_MIS)
 
+        self.assertFalse(Payable.objects.exclude(status__in=OPEN_STATUSES).exists())
+        self.assertFalse(Invoice.objects.exclude(status__in=OPEN_STATUSES).exists())
         tarun = Payable.objects.get(vendor='Tarun P S')
-        self.assertEqual(tarun.status, PayableStatus.PAID)
         self.assertEqual(tarun.total_amount, Decimal('55037.25'))
 
-        unmatched = Payable.objects.filter(vendor='Platinum Rent A Car(India) Pvt Ltd').first()
-        self.assertIsNotNone(unmatched)
-        self.assertEqual(unmatched.status, PayableStatus.PENDING)
-
+        change_status(tarun, PayableStatus.PAID, self.finance_user, 'Paid by NEFT')
         savex = Invoice.objects.filter(customer_name__icontains='Savex').first()
         self.assertIsNotNone(savex)
-        self.assertEqual(savex.status, InvoiceStatus.SENT)
-        self.assertEqual(savex.amount_received, Decimal('0'))
+        change_status(savex, InvoiceStatus.RECEIVED, self.finance_user)
+        savex.refresh_from_db()
+        self.assertEqual(savex.amount_received, savex.amount)
 
         import_mis_path(SAMPLE_MIS)
-        self.assertEqual(Payable.objects.get(vendor='Tarun P S').status, PayableStatus.PAID)
-        self.assertEqual(
-            Invoice.objects.filter(customer_name__icontains='Savex').first().status,
-            InvoiceStatus.SENT,
-        )
+        tarun.refresh_from_db()
+        savex.refresh_from_db()
+        self.assertEqual(tarun.status, PayableStatus.PAID)
+        self.assertTrue(tarun.status_manual)
+        self.assertEqual(savex.status, InvoiceStatus.RECEIVED)
+        self.assertEqual(FinanceStatusChange.objects.count(), 2)
 
     def test_bad_sheet_reports_errors(self):
         from io import BytesIO
@@ -537,6 +552,32 @@ class MisImportParserTests(APITestCase):
         self.assertEqual(summary.data['inflow_cards'], [])
         self.assertEqual(summary.data['outflow_cards'], [])
 
+    def test_dashboard_sample_mis_operational_and_seed_books(self):
+        self.assertTrue(DASHBOARD_SAMPLE_MIS.exists(), f'Missing fixture: {DASHBOARD_SAMPLE_MIS}')
+        from apps.finance.mis_import import import_mis_path
+        from apps.finance.models import CashflowAccount, CashflowEntry, Invoice, Payable
+
+        first = import_mis_path(DASHBOARD_SAMPLE_MIS)
+        self.assertGreater(first['invoices']['created'], 0)
+        self.assertGreater(first['payables']['created'], 0)
+        self.assertGreater(first['cashflow']['created'], 0)
+        self.assertGreater(Invoice.objects.count(), 0)
+        self.assertGreater(Payable.objects.count(), 0)
+        self.assertTrue(CashflowEntry.objects.filter(account=CashflowAccount.CURRENT).exists())
+        self.assertTrue(CashflowEntry.objects.filter(account=CashflowAccount.SEED).exists())
+        self.assertTrue(Invoice.objects.exclude(invoice_number='').exists())
+
+        invoices = Invoice.objects.count()
+        payables = Payable.objects.count()
+        cashflow = CashflowEntry.objects.count()
+        second = import_mis_path(DASHBOARD_SAMPLE_MIS)
+        self.assertEqual(second['invoices']['created'], 0)
+        self.assertEqual(second['invoices']['updated'], invoices)
+        self.assertEqual(second['payables']['created'], 0)
+        self.assertEqual(Invoice.objects.count(), invoices)
+        self.assertEqual(Payable.objects.count(), payables)
+        self.assertEqual(CashflowEntry.objects.count(), cashflow)
+
 
 class MasterDataAPITests(APITestCase):
     def setUp(self):
@@ -689,7 +730,7 @@ class MasterDataAPITests(APITestCase):
         self.assertEqual(len(response.data['errors']), 1)
         self.assertEqual(response.data['errors'][0]['row'], 4)
         vendor = FinanceVendor.objects.get(name='Rent Co')
-        self.assertEqual(vendor.mobile, '9111111111')
+        self.assertEqual(vendor.mobile, '+919111111111')
         self.assertEqual(vendor.pan, 'AAAFR1234K')
         self.assertTrue(vendor.msme_registered)
         self.assertTrue(vendor.tds_applicable)
@@ -720,3 +761,205 @@ class MasterDataAPITests(APITestCase):
         client = FinanceClient.objects.get(name='Round Trip Ltd')
         self.assertTrue(client.msme_registered)
         self.assertEqual(client.payment_terms_days, 45)
+
+
+class WorkspaceFinanceTests(APITestCase):
+    def setUp(self):
+        self.finance_user = User.objects.create_user(
+            email='workspace-finance@test.com',
+            name='Workspace Finance',
+            password='pass12345',
+            role=UserRole.FINANCE,
+        )
+        self.client.force_authenticate(self.finance_user)
+
+    def test_techpay_summary_ignores_techserv_rows(self):
+        from apps.finance.models import PurchaseOrder, PurchaseOrderStatus
+
+        PurchaseOrder.objects.create(
+            po_number='PO-TECHSERV',
+            customer_name='TechServ Customer',
+            total_value=Decimal('100000'),
+            status=PurchaseOrderStatus.ACTIVE,
+        )
+        techserv = self.client.get('/api/v1/finance/ops/summary/')
+        self.assertEqual(techserv.status_code, status.HTTP_200_OK)
+        self.assertEqual(techserv.data['po_metrics']['total_po_value'], 100000.0)
+
+        techpay = self.client.get(
+            '/api/v1/finance/ops/summary/',
+            HTTP_X_WORKSPACE_COMPANY='techpay',
+            HTTP_X_WORKSPACE_REGION='india',
+        )
+        self.assertEqual(techpay.status_code, status.HTTP_200_OK)
+        self.assertEqual(techpay.data['po_metrics']['total_po_value'], 0.0)
+
+    def test_created_invoice_stays_in_its_workspace(self):
+        from apps.finance.models import Invoice
+
+        created = self.client.post(
+            '/api/v1/finance/invoices/',
+            {
+                'invoice_number': 'TP-1',
+                'customer_name': 'TechPay Buyer',
+                'amount': '1500.00',
+                'invoice_date': '2026-04-01',
+            },
+            format='json',
+            HTTP_X_WORKSPACE_COMPANY='techpay',
+            HTTP_X_WORKSPACE_REGION='india',
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED, created.data)
+        stored = Invoice.objects.get(invoice_number='TP-1')
+        self.assertEqual(stored.workspace_company, 'techpay')
+        self.assertEqual(stored.workspace_region, 'india')
+
+        techserv_list = self.client.get('/api/v1/finance/invoices/')
+        self.assertEqual(techserv_list.status_code, status.HTTP_200_OK)
+        numbers = [row['invoice_number'] for row in techserv_list.data['results']]
+        self.assertNotIn('TP-1', numbers)
+
+        techpay_list = self.client.get(
+            '/api/v1/finance/invoices/',
+            HTTP_X_WORKSPACE_COMPANY='techpay',
+            HTTP_X_WORKSPACE_REGION='india',
+        )
+        numbers = [row['invoice_number'] for row in techpay_list.data['results']]
+        self.assertEqual(numbers, ['TP-1'])
+
+
+class FinanceStatusTests(APITestCase):
+    def setUp(self):
+        from datetime import timedelta
+
+        from apps.finance.models import Invoice, Payable
+
+        self.users = {
+            role: User.objects.create_user(
+                email=f'status-{role.lower()}@test.com',
+                name=f'{role.title()} User',
+                password='pass12345',
+                role=role,
+            )
+            for role in (UserRole.ADMIN, UserRole.FINANCE, UserRole.MANAGEMENT, UserRole.SALES)
+        }
+        self.today = date.today()
+        self.invoice = Invoice.objects.create(
+            invoice_number='ST-1',
+            customer_name='Status Co',
+            amount=Decimal('1000'),
+            invoice_date=self.today - timedelta(days=40),
+            due_date=self.today + timedelta(days=5),
+        )
+        self.payable = Payable.objects.create(
+            vendor='Status Vendor',
+            invoice_number='SP-1',
+            total_amount=Decimal('500'),
+            payable_amount=Decimal('500'),
+            due_date=self.today - timedelta(days=3),
+        )
+
+    def _post(self, user, path, payload, **headers):
+        self.client.force_authenticate(user)
+        return self.client.post(path, payload, format='json', **headers)
+
+    def test_new_rows_get_automatic_status(self):
+        self.assertEqual(self.invoice.status, 'DUE')
+        self.assertEqual(self.payable.status, 'OVERDUE')
+        self.assertFalse(self.invoice.status_manual)
+
+    def test_finance_and_admin_can_change_status_with_history(self):
+        url = f'/api/v1/finance/invoices/{self.invoice.id}/status/'
+        response = self._post(self.users[UserRole.FINANCE], url, {'status': 'received', 'note': 'NEFT 123'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['status'], 'RECEIVED')
+        self.assertTrue(response.data['status_manual'])
+        self.assertEqual(Decimal(str(response.data['amount_received'])), Decimal('1000'))
+
+        response = self._post(
+            self.users[UserRole.ADMIN],
+            f'/api/v1/finance/payables/{self.payable.id}/status/',
+            {'status': 'PAID'},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['status'], 'PAID')
+
+        self.client.force_authenticate(self.users[UserRole.SALES])
+        history = self.client.get(f'/api/v1/finance/invoices/{self.invoice.id}/status-history/')
+        self.assertEqual(history.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(history.data), 1)
+        entry = history.data[0]
+        self.assertEqual((entry['from_status'], entry['to_status']), ('DUE', 'RECEIVED'))
+        self.assertEqual(entry['changed_by_name'], 'Finance User')
+        self.assertEqual(entry['note'], 'NEFT 123')
+
+    def test_other_roles_cannot_change_status(self):
+        for role in (UserRole.MANAGEMENT, UserRole.SALES):
+            response = self._post(
+                self.users[role],
+                f'/api/v1/finance/invoices/{self.invoice.id}/status/',
+                {'status': 'RECEIVED'},
+            )
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.status, 'DUE')
+        self.assertFalse(self.invoice.status_changes.exists())
+
+    def test_rejects_status_from_the_other_ledger(self):
+        response = self._post(
+            self.users[UserRole.FINANCE],
+            f'/api/v1/finance/invoices/{self.invoice.id}/status/',
+            {'status': 'PAID'},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_crud_update_cannot_bypass_status_log(self):
+        self.client.force_authenticate(self.users[UserRole.FINANCE])
+        response = self.client.patch(
+            f'/api/v1/finance/invoices/{self.invoice.id}/',
+            {'status': 'RECEIVED', 'status_manual': True},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.invoice.refresh_from_db()
+        self.assertEqual(self.invoice.status, 'DUE')
+        self.assertFalse(self.invoice.status_manual)
+
+    def test_auto_refresh_moves_due_to_overdue_but_keeps_manual(self):
+        from datetime import timedelta
+
+        from apps.finance.models import Invoice
+        from apps.finance.status import change_status, refresh_auto_statuses
+
+        manual = Invoice.objects.create(
+            invoice_number='ST-2',
+            customer_name='Manual Co',
+            amount=Decimal('200'),
+            invoice_date=self.today,
+            due_date=self.today + timedelta(days=5),
+        )
+        change_status(manual, 'DUE', self.users[UserRole.FINANCE], 'Promised next week')
+
+        later = self.today + timedelta(days=10)
+        refresh_auto_statuses(today=later)
+        self.invoice.refresh_from_db()
+        manual.refresh_from_db()
+        self.assertEqual(self.invoice.status, 'OVERDUE')
+        self.assertEqual(manual.status, 'DUE')
+
+    def test_status_change_is_workspace_scoped(self):
+        response = self._post(
+            self.users[UserRole.FINANCE],
+            f'/api/v1/finance/invoices/{self.invoice.id}/status/',
+            {'status': 'RECEIVED'},
+            HTTP_X_WORKSPACE_COMPANY='techpay',
+            HTTP_X_WORKSPACE_REGION='india',
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.client.force_authenticate(self.users[UserRole.FINANCE])
+        history = self.client.get(
+            f'/api/v1/finance/payables/{self.payable.id}/status-history/',
+            HTTP_X_WORKSPACE_COMPANY='techpay',
+            HTTP_X_WORKSPACE_REGION='india',
+        )
+        self.assertEqual(history.status_code, status.HTTP_404_NOT_FOUND)

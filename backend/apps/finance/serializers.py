@@ -11,6 +11,7 @@ from .models import (
     CashflowEntry,
     ComplianceItem,
     FinanceClient,
+    FinanceStatusChange,
     FinanceVendor,
     Invoice,
     Payable,
@@ -197,11 +198,11 @@ class InvoiceSerializer(serializers.ModelSerializer):
             'taxable_amount', 'gst_amount', 'tds_amount', 'tds_section',
             'amount_received', 'balance', 'gross_payable', 'net_payable',
             'invoice_date', 'due_date', 'received_date',
-            'status', 'notes', 'created_at', 'updated_at',
+            'status', 'status_manual', 'notes', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'company_name', 'po_number',
-            'balance', 'gross_payable', 'net_payable',
+            'balance', 'gross_payable', 'net_payable', 'status', 'status_manual',
         ]
 
     def get_balance(self, obj):
@@ -232,15 +233,36 @@ class PayableSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'vendor', 'category', 'invoice_number', 'month_label',
             'taxable_amount', 'gst_amount', 'tds_amount', 'total_amount', 'payable_amount',
-            'invoice_date', 'due_date', 'status', 'notes', 'created_at', 'updated_at',
+            'invoice_date', 'due_date', 'status', 'status_manual', 'notes', 'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'status', 'status_manual']
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
         if attrs.get('invoice_date') and 'due_date' not in attrs:
             attrs['due_date'] = payable_due_date(attrs['invoice_date'])
         return attrs
+
+
+class FinanceStatusChangeSerializer(serializers.ModelSerializer):
+    changed_by_name = serializers.CharField(source='changed_by.name', read_only=True, default='')
+
+    class Meta:
+        model = FinanceStatusChange
+        fields = ['id', 'from_status', 'to_status', 'note', 'changed_by', 'changed_by_name', 'created_at']
+        read_only_fields = fields
+
+
+class StatusChangeInputSerializer(serializers.Serializer):
+    status = serializers.CharField()
+    note = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+
+    def validate_status(self, value):
+        allowed = self.context['allowed']
+        status = (value or '').strip().upper()
+        if status not in allowed:
+            raise serializers.ValidationError(f"Status must be one of: {', '.join(allowed)}.")
+        return status
 
 
 class CashflowEntrySerializer(serializers.ModelSerializer):
@@ -309,7 +331,9 @@ class MisUploadSerializer(serializers.ModelSerializer):
             storage_path=stored_path,
             **validated_data,
         )
-        self.context['import_result'] = import_mis_workbook(content)
+        from apps.finance.workspace import current_workspace
+
+        self.context['import_result'] = import_mis_workbook(content, workspace=current_workspace())
         return instance
 
 
@@ -358,6 +382,8 @@ class ComplianceItemSerializer(serializers.ModelSerializer):
                 ComplianceItem.objects.filter(
                     form_name__iexact=form,
                     applicable_act=instance.applicable_act,
+                    workspace_company=instance.workspace_company,
+                    workspace_region=instance.workspace_region,
                 )
                 .exclude(pk=instance.pk)
                 .exclude(due_date__isnull=True)
@@ -391,7 +417,9 @@ class _MasterDataSerializer(serializers.ModelSerializer):
         name = ' '.join((value or '').split())
         if not name:
             raise serializers.ValidationError('Name is required.')
-        qs = self.Meta.model.objects.filter(name__iexact=name)
+        from apps.finance.workspace import scoped
+
+        qs = scoped(self.Meta.model.objects.filter(name__iexact=name))
         if self.instance is not None:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():

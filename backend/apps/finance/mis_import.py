@@ -142,9 +142,26 @@ def _find_sheet(sheets: dict[str, list[tuple]], *candidates: str) -> list[tuple]
     return None
 
 
+def _workspace_lookup(result: dict) -> dict:
+    company, region = result.get('_workspace') or ('techserv', 'india')
+    return {'workspace_company': company, 'workspace_region': region}
+
+
+def _sales_invoice_number(row: tuple, headers: dict[str, int], invoice_date: date, buyer: str, gross: Decimal) -> str:
+    voucher = _norm(_cell(row, headers, 'voucher no.'))
+    if voucher:
+        return voucher[:80]
+    ref = _norm(_cell(row, headers, 'voucher ref. no.'))
+    if ref:
+        return ref[:80]
+    slug = ''.join(ch for ch in buyer.upper() if ch.isalnum())[:24] or 'SALE'
+    amount = str(gross).replace('.', '')
+    return f'{invoice_date:%Y%m%d}-{slug}-{amount}'[:80]
+
+
 def import_sales_register(rows: list[tuple], result: dict) -> None:
-    found = _find_header_row(rows, {'date', 'voucher no.', 'gross total'})
-    if not found:
+    found = _find_header_row(rows, {'date', 'gross total'})
+    if not found or not any(key in found[1] for key in ('voucher no.', 'voucher ref. no.')):
         result['errors'].append({'sheet': 'Sales Register', 'message': 'Header row not found.'})
         return
     header_idx, headers = found
@@ -162,9 +179,6 @@ def import_sales_register(rows: list[tuple], result: dict) -> None:
 
     last_date: date | None = None
     for excel_row, row in enumerate(rows[header_idx + 1 :], start=header_idx + 2):
-        voucher = _norm(_cell(row, headers, 'voucher no.'))
-        if not voucher:
-            continue
         buyer = _norm(_cell(row, headers, 'buyer', 'particulars'))
         if not buyer or buyer.lower() in {'dr', 'cr'}:
             continue
@@ -176,6 +190,9 @@ def import_sales_register(rows: list[tuple], result: dict) -> None:
             result['errors'].append({'sheet': 'Sales Register', 'row': excel_row, 'message': 'Missing date.'})
             continue
         gross = _as_decimal(_cell(row, headers, 'gross total'))
+        if gross <= 0:
+            continue
+        voucher = _sales_invoice_number(row, headers, invoice_date, buyer, gross)
         gst = sum((_as_decimal(row[idx]) if idx < len(row) else Decimal('0')) for idx in gst_cols)
         taxable = sum((_as_decimal(row[idx]) if idx < len(row) else Decimal('0')) for idx in amount_cols)
         if taxable <= 0 and gross > 0:
@@ -189,14 +206,14 @@ def import_sales_register(rows: list[tuple], result: dict) -> None:
             'taxable_amount': taxable,
             'gst_amount': gst,
             'invoice_date': invoice_date,
-            'status': InvoiceStatus.SENT,
             'notes': f"MIS Particulars: {_norm(_cell(row, headers, 'particulars'))}".strip(),
         }
         obj, created = Invoice.objects.update_or_create(
             invoice_number=voucher[:80],
+            **_workspace_lookup(result),
             defaults=defaults,
+            create_defaults={**defaults, 'status': InvoiceStatus.DUE},
         )
-        result.setdefault('touched_invoice_ids', []).append(obj.id)
         if created:
             result['invoices']['created'] += 1
         else:
@@ -260,15 +277,15 @@ def import_purchase_register(rows: list[tuple], result: dict) -> None:
             'payable_amount': payable,
             'invoice_date': entry_date,
             'due_date': payable_due_date(entry_date),
-            'status': PayableStatus.PENDING,
             'notes': f"MIS Voucher: {_norm(_cell(row, headers, 'voucher no.'))}".strip(),
         }
         obj, created = Payable.objects.update_or_create(
             invoice_number=invoice_no[:80],
             vendor=supplier[:255],
+            **_workspace_lookup(result),
             defaults=defaults,
+            create_defaults={**defaults, 'status': PayableStatus.DUE},
         )
-        result.setdefault('touched_payable_ids', []).append(obj.id)
         if created:
             result['payables']['created'] += 1
         else:
@@ -389,6 +406,7 @@ def import_bank_book(
             'entry_date': entry_date,
             'voucher_no': (voucher_no or ('OPENING' if is_opening else ''))[:80],
             'direction': direction,
+            **_workspace_lookup(result),
         }
         defaults = {
             'bucket': bucket,
@@ -409,78 +427,31 @@ def import_bank_book(
             result['cashflow']['created'] += 1
 
 
-def _norm_party(name: str) -> str:
-    return ' '.join(_norm(name).lower().split())
-
-
-def _claim_bank_match(
-    unused: list[tuple[str, Decimal, str]],
-    party: str,
-    amount: Decimal,
-) -> bool:
-    """Claim one unused bank row with same normalized party and exact amount."""
-    key = _norm_party(party)
-    if not key or amount <= 0:
-        return False
-    for index, (bank_party, bank_amount, _entry_id) in enumerate(unused):
-        if bank_party == key and bank_amount == amount:
-            unused.pop(index)
-            return True
-    return False
-
-
-def reconcile_statuses_from_bank(result: dict) -> None:
-    """Mark payables/invoices PAID when Bank Payment/Receipt matches name + gross."""
-    payments = [
-        (_norm_party(row.entity or row.category), row.amount, str(row.id))
-        for row in CashflowEntry.objects.filter(sub_category__iexact='Payment')
-    ]
-    receipts = [
-        (_norm_party(row.entity or row.category), row.amount, str(row.id))
-        for row in CashflowEntry.objects.filter(sub_category__iexact='Receipt')
-    ]
-
-    payable_ids = result.get('touched_payable_ids') or []
-    if payable_ids:
-        for payable in Payable.objects.filter(id__in=payable_ids).order_by('created_at', 'id'):
-            matched = _claim_bank_match(payments, payable.vendor, payable.total_amount)
-            new_status = PayableStatus.PAID if matched else PayableStatus.PENDING
-            if payable.status != new_status:
-                payable.status = new_status
-                payable.save(update_fields=['status', 'updated_at'])
-
-    invoice_ids = result.get('touched_invoice_ids') or []
-    if invoice_ids:
-        for invoice in Invoice.objects.filter(id__in=invoice_ids).order_by('created_at', 'id'):
-            matched = _claim_bank_match(receipts, invoice.customer_name, invoice.amount)
-            if matched:
-                invoice.status = InvoiceStatus.PAID
-                invoice.amount_received = invoice.amount
-            else:
-                invoice.status = InvoiceStatus.SENT
-                invoice.amount_received = Decimal('0')
-            invoice.save(update_fields=['status', 'amount_received', 'updated_at'])
-
-
-def import_mis_workbook(content: bytes) -> dict:
+def import_mis_workbook(content: bytes, workspace: tuple[str, str] | None = None) -> dict:
     result = {
         'invoices': {'created': 0, 'updated': 0},
         'payables': {'created': 0, 'updated': 0},
         'cashflow': {'created': 0, 'updated': 0},
-        'touched_invoice_ids': [],
-        'touched_payable_ids': [],
+        '_workspace': workspace or ('techserv', 'india'),
         'errors': [],
     }
     try:
         sheets = _load_rows(content)
     except Exception as exc:  # noqa: BLE001
         result['errors'].append({'sheet': '*', 'message': f'Could not open workbook: {exc}'})
+        result.pop('_workspace')
         return result
 
     sales = _find_sheet(sheets, 'Sales Register', 'Sales Registry')
     purchase = _find_sheet(sheets, 'Purchase Register', 'Purchase Registry')
-    bank = _find_sheet(sheets, 'Bank book', 'Bank Book')
-    seed_bank = _find_sheet(sheets, 'Seed Bank book', 'Seed Bank Book', 'Seed bank book')
+    bank = _find_sheet(sheets, 'Bank book', 'Bank Book', 'Operational Book')
+    seed_bank = _find_sheet(
+        sheets,
+        'Seed Bank book',
+        'Seed Bank Book',
+        'Seed bank book',
+        'Seed Book',
+    )
 
     if sales is None:
         result['errors'].append({'sheet': 'Sales Register', 'message': 'Sheet missing.'})
@@ -500,9 +471,9 @@ def import_mis_workbook(content: bytes) -> dict:
     if seed_bank is not None:
         import_bank_book(seed_bank, result, account=CashflowAccount.SEED, sheet_label='Seed Bank book')
 
-    reconcile_statuses_from_bank(result)
-    result.pop('touched_invoice_ids', None)
-    result.pop('touched_payable_ids', None)
+    from apps.finance.status import refresh_auto_statuses
+
+    refresh_auto_statuses(result.pop('_workspace'))
     return result
 
 

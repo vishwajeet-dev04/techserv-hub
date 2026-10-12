@@ -6,6 +6,7 @@ import { getErrorMessage } from '../../api/errors'
 import { useAuth } from '../../hooks/useAuth'
 import { useDateRange } from '../../hooks/useDateRange'
 import { invalidateFinanceQueries } from '../../lib/financeQueries'
+import { statusLabel } from '../../lib/financeStatus'
 import { notify } from '../../lib/notify'
 import { btnPrimaryClass, btnSecondaryClass, fieldClass } from '../Modal'
 import type { MisImportResult } from '../../types'
@@ -237,16 +238,16 @@ export function KpiCard({
 export function StatusBadge({ status }: { status: string }) {
   const upper = status.toUpperCase()
   const tone =
-    upper.includes('PAID') || upper === 'ACTIVE' || upper === 'INFLOW'
+    upper.includes('PAID') || upper === 'RECEIVED' || upper === 'ACTIVE' || upper === 'INFLOW'
       ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
-      : upper.includes('PENDING') || upper.includes('SENT') || upper.includes('PARTIAL')
+      : upper === 'DUE' || upper.includes('PENDING') || upper.includes('SENT') || upper.includes('PARTIAL')
         ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
         : upper.includes('OUTFLOW') || upper.includes('OVERDUE') || upper.includes('CANCEL')
           ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
           : 'bg-canvas text-muted border-line'
   return (
     <span className={`inline-flex px-2 py-0.5 rounded-md text-[11px] font-medium border ${tone}`}>
-      {status}
+      {statusLabel(status)}
     </span>
   )
 }

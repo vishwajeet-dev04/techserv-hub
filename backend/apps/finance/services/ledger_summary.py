@@ -8,11 +8,14 @@ from decimal import Decimal
 from django.db.models import Count, Q, Sum
 
 from apps.business.models import Company
+from apps.finance.workspace import scoped
 from apps.finance.models import (
     CashflowAccount,
     CashflowDirection,
     CashflowEntry,
+    OPEN_STATUSES,
     Invoice,
+    InvoiceStatus,
     Payable,
     PayableStatus,
     PurchaseOrder,
@@ -38,7 +41,7 @@ def cashflow_summary(
     account: str = CashflowAccount.CURRENT,
 ) -> dict:
     """Category totals per direction; the Opening balance row is a balance, not a flow, so it is excluded."""
-    qs = _date_filtered(CashflowEntry.objects.filter(account=account), 'entry_date', date_from, date_to)
+    qs = _date_filtered(scoped(CashflowEntry.objects).filter(account=account), 'entry_date', date_from, date_to)
     qs = qs.exclude(Q(sub_category__iexact='Opening') | Q(category__iexact='Opening Balance'))
     inflow_by: dict[str, Decimal] = defaultdict(Decimal)
     outflow_by: dict[str, Decimal] = defaultdict(Decimal)
@@ -73,7 +76,7 @@ def cashflow_summary(
     categories.sort(key=lambda row: -(row['inflow'] + row['outflow']))
     return {
         'account': account,
-        'has_entries': CashflowEntry.objects.filter(account=account).exists(),
+        'has_entries': scoped(CashflowEntry.objects).filter(account=account).exists(),
         'total_inflow': _money(total_in),
         'total_outflow': _money(total_out),
         'net': _money(total_in - total_out),
@@ -84,12 +87,14 @@ def cashflow_summary(
 
 
 def payables_summary(date_from: str | None = None, date_to: str | None = None) -> dict:
-    qs = _date_filtered(Payable.objects.all(), 'invoice_date', date_from, date_to)
+    qs = _date_filtered(scoped(Payable.objects).all(), 'invoice_date', date_from, date_to)
     total = qs.aggregate(total=Sum('payable_amount'))['total'] or Decimal('0')
     paid_qs = qs.filter(status=PayableStatus.PAID)
-    pending_qs = qs.filter(status=PayableStatus.PENDING)
+    pending_qs = qs.filter(status__in=OPEN_STATUSES)
+    overdue_qs = qs.filter(status=PayableStatus.OVERDUE)
     paid = paid_qs.aggregate(total=Sum('payable_amount'))['total'] or Decimal('0')
     outstanding = pending_qs.aggregate(total=Sum('payable_amount'))['total'] or Decimal('0')
+    overdue = overdue_qs.aggregate(total=Sum('payable_amount'))['total'] or Decimal('0')
     tds = qs.aggregate(total=Sum('tds_amount'))['total'] or Decimal('0')
     by_category = list(
         qs.values('category')
@@ -100,9 +105,11 @@ def payables_summary(date_from: str | None = None, date_to: str | None = None) -
         'total_payable': _money(total),
         'total_paid': _money(paid),
         'outstanding': _money(outstanding),
+        'overdue': _money(overdue),
         'tds_deducted': _money(tds),
         'paid_count': paid_qs.count(),
         'pending_count': pending_qs.count(),
+        'overdue_count': overdue_qs.count(),
         'by_category': [
             {'category': row['category'] or 'Other', 'amount': _money(row['amount']), 'count': row['count']}
             for row in by_category
@@ -111,7 +118,7 @@ def payables_summary(date_from: str | None = None, date_to: str | None = None) -
 
 
 def invoices_summary(date_from: str | None = None, date_to: str | None = None) -> dict:
-    qs = _date_filtered(Invoice.objects.all(), 'invoice_date', date_from, date_to)
+    qs = _date_filtered(scoped(Invoice.objects).all(), 'invoice_date', date_from, date_to)
     aggregates = qs.aggregate(
         billed=Sum('amount'),
         gst=Sum('gst_amount'),
@@ -121,8 +128,15 @@ def invoices_summary(date_from: str | None = None, date_to: str | None = None) -
     )
     billed = aggregates['billed'] or Decimal('0')
     received = aggregates['received'] or Decimal('0')
+    overdue = qs.filter(status=InvoiceStatus.OVERDUE).aggregate(
+        total=Sum('amount') - Sum('amount_received'),
+    )['total'] or Decimal('0')
     return {
         'count': qs.count(),
+        'overdue': _money(overdue),
+        'due_count': qs.filter(status=InvoiceStatus.DUE).count(),
+        'overdue_count': qs.filter(status=InvoiceStatus.OVERDUE).count(),
+        'received_count': qs.filter(status=InvoiceStatus.RECEIVED).count(),
         'billed': _money(billed),
         'gst': _money(aggregates['gst']),
         'tds': _money(aggregates['tds']),
@@ -133,13 +147,13 @@ def invoices_summary(date_from: str | None = None, date_to: str | None = None) -
 
 
 def clients_summary() -> dict:
-    companies = Company.objects.filter(
-        Q(invoices__isnull=False) | Q(purchase_orders__isnull=False)
-    ).distinct()
+    company_ids = set(scoped(Invoice.objects).filter(company__isnull=False).values_list('company_id', flat=True))
+    company_ids |= set(scoped(PurchaseOrder.objects).filter(company__isnull=False).values_list('company_id', flat=True))
+    companies = Company.objects.filter(id__in=company_ids)
     rows = []
     for company in companies:
-        pos = company.purchase_orders.exclude(status=PurchaseOrderStatus.CANCELLED)
-        invoices = company.invoices.all()
+        pos = scoped(company.purchase_orders.exclude(status=PurchaseOrderStatus.CANCELLED))
+        invoices = scoped(company.invoices.all())
         invoiced = invoices.aggregate(total=Sum('amount'))['total'] or Decimal('0')
         paid = invoices.aggregate(total=Sum('amount_received'))['total'] or Decimal('0')
         service = pos.values_list('service_category', flat=True).first() or ''
@@ -154,13 +168,13 @@ def clients_summary() -> dict:
         })
     # Also include invoice customers without company FK
     known = {row['name'].lower() for row in rows}
-    for inv in Invoice.objects.filter(company__isnull=True):
+    for inv in scoped(Invoice.objects).filter(company__isnull=True):
         key = (inv.customer_name or '').strip()
         if not key or key.lower() in known:
             continue
         known.add(key.lower())
-        paid = Invoice.objects.filter(customer_name=key).aggregate(total=Sum('amount_received'))['total'] or 0
-        billed = Invoice.objects.filter(customer_name=key).aggregate(total=Sum('amount'))['total'] or 0
+        paid = scoped(Invoice.objects).filter(customer_name=key).aggregate(total=Sum('amount_received'))['total'] or 0
+        billed = scoped(Invoice.objects).filter(customer_name=key).aggregate(total=Sum('amount'))['total'] or 0
         rows.append({
             'id': key,
             'name': key,
@@ -178,7 +192,7 @@ def clients_summary() -> dict:
 
 
 def purchase_orders_summary() -> dict:
-    qs = PurchaseOrder.objects.exclude(status=PurchaseOrderStatus.CANCELLED)
+    qs = scoped(PurchaseOrder.objects).exclude(status=PurchaseOrderStatus.CANCELLED)
     return {
         'count': qs.count(),
         'active': qs.filter(status=PurchaseOrderStatus.ACTIVE).count(),

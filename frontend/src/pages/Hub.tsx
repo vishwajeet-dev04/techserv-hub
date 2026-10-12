@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { ArrowRight, FileText, LayoutDashboard, Users } from 'lucide-react'
 // import { GitBranch } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import { isTechPay, useWorkspace } from '../lib/workspaces'
 import type { ReactNode } from 'react'
 
 type Theme = 'green' | 'blue' | 'rose' | 'purple'
@@ -84,6 +85,7 @@ const THEME: Record<Theme, { tile: string; icon: string; arrow: string; hover: s
 
 export default function Hub() {
   const { hasAccess, isLoading, role, user } = useAuth()
+  const techpay = isTechPay(useWorkspace())
   const visible = cards.filter((card) => hasAccess(card.module))
 
   return (
@@ -109,19 +111,26 @@ export default function Hub() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {visible.map((card) => {
               const theme = THEME[card.theme]
-              return (
-                <Link
-                  key={card.to}
-                  to={card.to}
-                  className={`group flex items-start gap-4 sm:flex-col sm:aspect-square bg-surface/80 backdrop-blur-md border border-line rounded-2xl p-5 sm:p-6 shadow-sm transition-all ${theme.hover}`}
-                >
+              const pending = techpay && card.module === 'pulse'
+              const className = `group flex items-start gap-4 sm:flex-col sm:aspect-square bg-surface/80 backdrop-blur-md border border-line rounded-2xl p-5 sm:p-6 shadow-sm transition-all ${
+                pending ? 'opacity-70 cursor-not-allowed' : theme.hover
+              }`
+              const inner = (
+                <>
                   <div
                     className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl ${theme.tile} ${theme.icon} flex items-center justify-center shrink-0`}
                   >
                     {card.icon}
                   </div>
                   <div className="min-w-0 flex-1 pt-0.5 sm:flex-none sm:pt-2">
-                    <h2 className="text-base sm:text-lg font-semibold text-ink">{card.title}</h2>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-base sm:text-lg font-semibold text-ink">{card.title}</h2>
+                      {pending ? (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 bg-warning-soft text-warning">
+                          Pending
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="text-sm text-muted mt-1 leading-relaxed">{card.body}</p>
                   </div>
                   <span
@@ -130,6 +139,18 @@ export default function Hub() {
                   >
                     <ArrowRight className="w-4 h-4" strokeWidth={2} />
                   </span>
+                </>
+              )
+              if (pending) {
+                return (
+                  <div key={card.to} className={className} aria-disabled="true">
+                    {inner}
+                  </div>
+                )
+              }
+              return (
+                <Link key={card.to} to={card.to} className={className}>
+                  {inner}
                 </Link>
               )
             })}

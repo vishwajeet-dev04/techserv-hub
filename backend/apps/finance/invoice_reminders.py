@@ -18,8 +18,7 @@ logger = logging.getLogger(__name__)
 
 REMINDER_OFFSETS = (3, 1)
 UNPAID_STATUSES = (
-    InvoiceStatus.SENT,
-    InvoiceStatus.PARTIAL,
+    InvoiceStatus.DUE,
     InvoiceStatus.OVERDUE,
 )
 

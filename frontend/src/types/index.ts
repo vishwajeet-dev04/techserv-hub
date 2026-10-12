@@ -396,6 +396,7 @@ export interface OpsInvoiceRow {
   due_date: string | null
   pending_since: string
   days_pending: number
+  status: string
 }
 
 export interface OpsSummary {
@@ -523,7 +524,8 @@ export interface OpsInvoice {
   invoice_date: string
   due_date: string | null
   received_date: string | null
-  status: string
+  status: ReceivableStatus
+  status_manual: boolean
   notes: string
 }
 
@@ -540,8 +542,22 @@ export interface OpsPayable {
   payable_amount: number
   invoice_date: string | null
   due_date: string | null
-  status: string
+  status: PayableStatus
+  status_manual: boolean
   notes: string
+}
+
+export type ReceivableStatus = 'DUE' | 'OVERDUE' | 'RECEIVED'
+export type PayableStatus = 'DUE' | 'OVERDUE' | 'PAID'
+
+export interface FinanceStatusChange {
+  id: string
+  from_status: string
+  to_status: string
+  note: string
+  changed_by: string | null
+  changed_by_name: string
+  created_at: string
 }
 
 export type CashflowAccount = 'CURRENT' | 'SEED'
@@ -593,14 +609,20 @@ export interface LedgerPayablesSummary {
   total_payable: number
   total_paid: number
   outstanding: number
+  overdue: number
   tds_deducted: number
   paid_count: number
   pending_count: number
+  overdue_count: number
   by_category: Array<{ category: string; amount: number; count: number }>
 }
 
 export interface LedgerInvoicesSummary {
   count: number
+  overdue: number
+  due_count: number
+  overdue_count: number
+  received_count: number
   billed: number
   gst: number
   tds: number

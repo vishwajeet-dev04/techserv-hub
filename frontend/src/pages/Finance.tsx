@@ -123,7 +123,7 @@ function InvoiceTable({
             <th className="py-2 font-semibold">{partyLabel}</th>
             <th className="py-2 font-semibold">Invoice</th>
             <th className="py-2 font-semibold">Value</th>
-            <th className="py-2 font-semibold">Pending since</th>
+            <th className="py-2 font-semibold">Due date</th>
           </tr>
         </thead>
         <tbody>
@@ -132,7 +132,7 @@ function InvoiceTable({
               <td className="py-2.5 text-ink max-w-[140px] truncate">{row.customer_name}</td>
               <td className="py-2.5 text-muted font-mono text-xs">{row.invoice_number}</td>
               <td className="py-2.5 font-medium tabular-nums text-ink">{fmt(row.amount)}</td>
-              <td className="py-2.5 text-muted whitespace-nowrap">{row.pending_since}</td>
+              <td className="py-2.5 text-muted whitespace-nowrap">{row.due_date ?? row.pending_since}</td>
             </tr>
           ))}
         </tbody>
@@ -390,20 +390,20 @@ export default function Finance() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
-              <p className="text-sm font-semibold text-ink">Due (≤ 30 days)</p>
+              <p className="text-sm font-semibold text-ink">Due (not yet past due date)</p>
               <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-400 mt-1 tabular-nums">{fmt(rec.due)}</p>
               <ul className="mt-2 space-y-1 text-xs text-muted">
                 <li className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden />
-                    0–7 days
+                    Due in 0–7 days
                   </span>
                   <span className="tabular-nums text-ink font-medium">{fmt(rec.due_0_7)}</span>
                 </li>
                 <li className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-violet-500" aria-hidden />
-                    8–30 days
+                    Due later
                   </span>
                   <span className="tabular-nums text-ink font-medium">{fmt(rec.due_8_30)}</span>
                 </li>
@@ -412,7 +412,7 @@ export default function Finance() {
                 <InvoiceTable rows={duePreview} partyLabel="Customer" emptyLabel="No invoices in this bucket" />
               </div>
               <Link
-                to="/finance/invoices"
+                to="/finance/invoices?status=due"
                 className="inline-flex items-center gap-1 mt-3 text-xs font-medium text-brand hover:text-brand-hover"
               >
                 View All ({rec.due_invoices.length})
@@ -421,7 +421,7 @@ export default function Finance() {
             </div>
 
             <div>
-              <p className="text-sm font-semibold text-ink">Overdue (&gt; 30 days)</p>
+              <p className="text-sm font-semibold text-ink">Overdue (past due date)</p>
               <p className="text-lg font-semibold text-danger mt-1 tabular-nums">{fmt(rec.overdue)}</p>
               <button
                 type="button"
@@ -438,7 +438,7 @@ export default function Finance() {
               {agingOpen ? (
                 <ul className="mt-2 space-y-1 text-xs text-muted">
                   {(charts?.aging ?? [])
-                    .filter((row) => ['31-60', '61-90', '90+'].includes(row.bucket))
+                    .filter((row) => row.bucket !== 'Due')
                     .map((row) => (
                       <li key={row.bucket} className="flex items-center justify-between gap-2">
                         <span>{row.bucket} days</span>
@@ -451,7 +451,7 @@ export default function Finance() {
                 <InvoiceTable rows={overduePreview} partyLabel="Customer" emptyLabel="No invoices in this bucket" />
               </div>
               <Link
-                to="/finance/invoices"
+                to="/finance/invoices?status=overdue"
                 className="inline-flex items-center gap-1 mt-3 text-xs font-medium text-brand hover:text-brand-hover"
               >
                 View All ({rec.overdue_invoices.length})
@@ -495,20 +495,20 @@ export default function Finance() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
-              <p className="text-sm font-semibold text-ink">Due (≤ 30 days)</p>
+              <p className="text-sm font-semibold text-ink">Due (not yet past due date)</p>
               <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-400 mt-1 tabular-nums">{fmt(pay.due)}</p>
               <ul className="mt-2 space-y-1 text-xs text-muted">
                 <li className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500" aria-hidden />
-                    0–7 days
+                    Due in 0–7 days
                   </span>
                   <span className="tabular-nums text-ink font-medium">{fmt(pay.due_0_7)}</span>
                 </li>
                 <li className="flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-violet-500" aria-hidden />
-                    8–30 days
+                    Due later
                   </span>
                   <span className="tabular-nums text-ink font-medium">{fmt(pay.due_8_30)}</span>
                 </li>
@@ -517,7 +517,7 @@ export default function Finance() {
                 <InvoiceTable rows={payDuePreview} partyLabel="Vendor" emptyLabel="No bills in this bucket" />
               </div>
               <Link
-                to="/finance/payables"
+                to="/finance/payables?status=due"
                 className="inline-flex items-center gap-1 mt-3 text-xs font-medium text-brand hover:text-brand-hover"
               >
                 View All ({pay.due_invoices.length})
@@ -526,7 +526,7 @@ export default function Finance() {
             </div>
 
             <div>
-              <p className="text-sm font-semibold text-ink">Overdue (&gt; 30 days)</p>
+              <p className="text-sm font-semibold text-ink">Overdue (past due date)</p>
               <p className="text-lg font-semibold text-danger mt-1 tabular-nums">{fmt(pay.overdue)}</p>
               <button
                 type="button"
@@ -554,7 +554,7 @@ export default function Finance() {
                 <InvoiceTable rows={payOverduePreview} partyLabel="Vendor" emptyLabel="No bills in this bucket" />
               </div>
               <Link
-                to="/finance/payables"
+                to="/finance/payables?status=overdue"
                 className="inline-flex items-center gap-1 mt-3 text-xs font-medium text-brand hover:text-brand-hover"
               >
                 View All ({pay.overdue_invoices.length})

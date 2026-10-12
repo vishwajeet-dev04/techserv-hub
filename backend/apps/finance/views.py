@@ -1,5 +1,6 @@
 import logging
 from django.db.models import Q
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
@@ -11,7 +12,8 @@ from apps.audit.models import ImportModule
 from apps.pulse.views import _read_upload, _xlsx_response
 from .models import FinancialPeriod, FinancialDocument, FinancialMetric, MisUpload
 from .models import CapitalEntry, CashflowAccount, CashflowEntry, ComplianceItem, Invoice, Payable, PurchaseOrder
-from .models import FinanceClient, FinanceVendor
+from .models import FinanceClient, FinanceVendor, InvoiceStatus, PayableStatus
+from .status import change_status
 from . import master_excel
 from .services.master_data import client_stats, vendor_stats
 from .serializers import (
@@ -27,7 +29,9 @@ from .serializers import (
     CashflowEntrySerializer,
     CapitalEntrySerializer,
     ComplianceItemSerializer,
+    FinanceStatusChangeSerializer,
     MisUploadSerializer,
+    StatusChangeInputSerializer,
 )
 from .services.kpi_service import get_financial_dashboard_summary, get_revenue_trend
 from .services.ops_service import get_ops_dashboard_series, get_ops_summary
@@ -39,6 +43,7 @@ from .services.ledger_summary import (
     payables_summary,
     purchase_orders_summary,
 )
+from .workspace import scoped, workspace_stamp
 from common.permissions.roles import IsFinanceOperator, IsFinanceOrAbove
 
 logger = logging.getLogger(__name__)
@@ -153,12 +158,17 @@ def _cashflow_account(request) -> str:
     return account if account in CashflowAccount.values else CashflowAccount.CURRENT
 
 
-class PurchaseOrderListCreateView(generics.ListCreateAPIView):
+class _WorkspaceCreate:
+    def perform_create(self, serializer):
+        serializer.save(**workspace_stamp())
+
+
+class PurchaseOrderListCreateView(_WorkspaceCreate, generics.ListCreateAPIView):
     serializer_class = PurchaseOrderSerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
     def get_queryset(self):
-        qs = PurchaseOrder.objects.select_related('company').prefetch_related('invoices')
+        qs = scoped(PurchaseOrder.objects.select_related('company').prefetch_related('invoices'))
         status_filter = self.request.query_params.get('status')
         search = self.request.query_params.get('search')
         client = self.request.query_params.get('client')
@@ -173,17 +183,19 @@ class PurchaseOrderListCreateView(generics.ListCreateAPIView):
 
 
 class PurchaseOrderDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = PurchaseOrder.objects.select_related('company').prefetch_related('invoices')
     serializer_class = PurchaseOrderSerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
+    def get_queryset(self):
+        return scoped(PurchaseOrder.objects.select_related('company').prefetch_related('invoices'))
 
-class InvoiceListCreateView(generics.ListCreateAPIView):
+
+class InvoiceListCreateView(_WorkspaceCreate, generics.ListCreateAPIView):
     serializer_class = InvoiceSerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
     def get_queryset(self):
-        qs = Invoice.objects.select_related('company', 'purchase_order')
+        qs = scoped(Invoice.objects.select_related('company', 'purchase_order'))
         status_filter = self.request.query_params.get('status')
         search = self.request.query_params.get('search')
         client = self.request.query_params.get('client')
@@ -198,17 +210,19 @@ class InvoiceListCreateView(generics.ListCreateAPIView):
 
 
 class InvoiceDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Invoice.objects.select_related('company', 'purchase_order')
     serializer_class = InvoiceSerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
+    def get_queryset(self):
+        return scoped(Invoice.objects.select_related('company', 'purchase_order'))
 
-class PayableListCreateView(generics.ListCreateAPIView):
+
+class PayableListCreateView(_WorkspaceCreate, generics.ListCreateAPIView):
     serializer_class = PayableSerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
     def get_queryset(self):
-        qs = Payable.objects.all()
+        qs = scoped(Payable.objects.all())
         status_filter = self.request.query_params.get('status')
         search = self.request.query_params.get('search')
         vendor = self.request.query_params.get('vendor')
@@ -223,17 +237,61 @@ class PayableListCreateView(generics.ListCreateAPIView):
 
 
 class PayableDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Payable.objects.all()
     serializer_class = PayableSerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
+    def get_queryset(self):
+        return scoped(Payable.objects.all())
 
-class CashflowEntryListCreateView(generics.ListCreateAPIView):
+
+def _status_change_response(request, row, allowed):
+    payload = StatusChangeInputSerializer(data=request.data, context={'allowed': allowed})
+    payload.is_valid(raise_exception=True)
+    change_status(row, payload.validated_data['status'], request.user, payload.validated_data.get('note', ''))
+    logger.info(
+        'Finance status changed %s %s -> %s user=%s',
+        type(row).__name__, row.pk, row.status, request.user.id,
+    )
+    serializer_class = InvoiceSerializer if isinstance(row, Invoice) else PayableSerializer
+    return Response(serializer_class(row).data)
+
+
+def _status_history_response(row):
+    return Response(FinanceStatusChangeSerializer(row.status_changes.select_related('changed_by'), many=True).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsFinanceOrAbove])
+def invoice_status(request, pk):
+    row = get_object_or_404(scoped(Invoice.objects.all()), pk=pk)
+    return _status_change_response(request, row, InvoiceStatus.values)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsFinanceOrAbove])
+def payable_status(request, pk):
+    row = get_object_or_404(scoped(Payable.objects.all()), pk=pk)
+    return _status_change_response(request, row, PayableStatus.values)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsFinanceOperator])
+def invoice_status_history(request, pk):
+    return _status_history_response(get_object_or_404(scoped(Invoice.objects.all()), pk=pk))
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsFinanceOperator])
+def payable_status_history(request, pk):
+    return _status_history_response(get_object_or_404(scoped(Payable.objects.all()), pk=pk))
+
+
+class CashflowEntryListCreateView(_WorkspaceCreate, generics.ListCreateAPIView):
     serializer_class = CashflowEntrySerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
     def get_queryset(self):
-        qs = CashflowEntry.objects.filter(account=_cashflow_account(self.request))
+        qs = scoped(CashflowEntry.objects.filter(account=_cashflow_account(self.request)))
         direction = self.request.query_params.get('direction')
         search = self.request.query_params.get('search')
         category = self.request.query_params.get('category')
@@ -248,17 +306,19 @@ class CashflowEntryListCreateView(generics.ListCreateAPIView):
 
 
 class CashflowEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = CashflowEntry.objects.all()
     serializer_class = CashflowEntrySerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
+    def get_queryset(self):
+        return scoped(CashflowEntry.objects.all())
 
-class CapitalEntryListCreateView(generics.ListCreateAPIView):
+
+class CapitalEntryListCreateView(_WorkspaceCreate, generics.ListCreateAPIView):
     serializer_class = CapitalEntrySerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
     def get_queryset(self):
-        qs = CapitalEntry.objects.all()
+        qs = scoped(CapitalEntry.objects.all())
         capital_type = self.request.query_params.get('capital_type')
         if capital_type:
             qs = qs.filter(capital_type=capital_type)
@@ -266,9 +326,11 @@ class CapitalEntryListCreateView(generics.ListCreateAPIView):
 
 
 class CapitalEntryDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = CapitalEntry.objects.all()
     serializer_class = CapitalEntrySerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+    def get_queryset(self):
+        return scoped(CapitalEntry.objects.all())
 
 
 class ComplianceItemListCreateView(generics.ListCreateAPIView):
@@ -278,7 +340,7 @@ class ComplianceItemListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         from django.db.models import Q
 
-        qs = ComplianceItem.objects.select_related('created_by')
+        qs = scoped(ComplianceItem.objects.select_related('created_by'))
         status_filter = self.request.query_params.get('status')
         act = self.request.query_params.get('act')
         search = self.request.query_params.get('search')
@@ -319,23 +381,27 @@ class ComplianceItemListCreateView(generics.ListCreateAPIView):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        serializer.save(created_by=self.request.user, **workspace_stamp())
 
 
 class ComplianceItemDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = ComplianceItem.objects.select_related('created_by')
     serializer_class = ComplianceItemSerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
+    def get_queryset(self):
+        return scoped(ComplianceItem.objects.select_related('created_by'))
+
 
 class MisUploadListCreateView(generics.ListCreateAPIView):
-    queryset = MisUpload.objects.select_related('uploaded_by')
     serializer_class = MisUploadSerializer
     permission_classes = [IsAuthenticated, IsFinanceOrAbove]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
+    def get_queryset(self):
+        return scoped(MisUpload.objects.select_related('uploaded_by'))
+
     def perform_create(self, serializer):
-        serializer.save(uploaded_by=self.request.user)
+        serializer.save(uploaded_by=self.request.user, **workspace_stamp())
         logger.info('MIS file uploaded: %s user=%s path=%s', serializer.instance.file_name, self.request.user.id, self.request.path)
 
 
@@ -401,7 +467,7 @@ class _MasterDataStatsMixin:
 
 
 def _master_queryset(model, request, search_fields):
-    qs = model.objects.all()
+    qs = scoped(model.objects.all())
     active = (request.query_params.get('active') or '').lower()
     if active in {'true', '1', 'active'}:
         qs = qs.filter(is_active=True)
@@ -434,7 +500,7 @@ class _VendorStats(_MasterDataStatsMixin):
         return vendor_stats(items)
 
 
-class FinanceClientListCreateView(_ClientStats, generics.ListCreateAPIView):
+class FinanceClientListCreateView(_WorkspaceCreate, _ClientStats, generics.ListCreateAPIView):
     serializer_class = FinanceClientSerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
@@ -443,12 +509,14 @@ class FinanceClientListCreateView(_ClientStats, generics.ListCreateAPIView):
 
 
 class FinanceClientDetailView(_ClientStats, generics.RetrieveUpdateDestroyAPIView):
-    queryset = FinanceClient.objects.select_related('company')
     serializer_class = FinanceClientSerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
+    def get_queryset(self):
+        return scoped(FinanceClient.objects.select_related('company'))
 
-class FinanceVendorListCreateView(_VendorStats, generics.ListCreateAPIView):
+
+class FinanceVendorListCreateView(_WorkspaceCreate, _VendorStats, generics.ListCreateAPIView):
     serializer_class = FinanceVendorSerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
 
@@ -457,9 +525,11 @@ class FinanceVendorListCreateView(_VendorStats, generics.ListCreateAPIView):
 
 
 class FinanceVendorDetailView(_VendorStats, generics.RetrieveUpdateDestroyAPIView):
-    queryset = FinanceVendor.objects.all()
     serializer_class = FinanceVendorSerializer
     permission_classes = [IsAuthenticated, IsFinanceOperator]
+
+    def get_queryset(self):
+        return scoped(FinanceVendor.objects.all())
 
 
 @api_view(['GET'])

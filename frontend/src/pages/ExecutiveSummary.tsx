@@ -25,6 +25,7 @@ import PipelineFlow from '../components/pulse/PipelineFlow'
 import OpsSummaryPanel, { ClickableCard, InsightPanel, Kpi } from '../components/ops/OpsSummaryPanel'
 import { buildDetail, type ExecutiveDetail, type FinanceDetailKey } from '../components/executive/executiveDetails'
 import { useAuth } from '../hooks/useAuth'
+import { isTechPay, useWorkspace } from '../lib/workspaces'
 import { useDateRange } from '../hooks/useDateRange'
 import { fmtInrCompact, priorLabel } from '../lib/format'
 import { chartCursor, chartGridStroke, chartTick, legendStyle, seriesColor, STATUS_COLORS, tooltipProps } from '../lib/chartTheme'
@@ -48,7 +49,7 @@ export default function ExecutiveSummary() {
   const { user, hasAccess } = useAuth()
   const queryClient = useQueryClient()
   const { from, to, setRange } = useDateRange()
-  const showOps = hasAccess('pulse')
+  const showOps = hasAccess('pulse') && !isTechPay(useWorkspace())
   const showFinance = hasAccess('finance')
   const [detail, setDetail] = useState<ExecutiveDetail | null>(null)
   const closeDetail = () => setDetail(null)

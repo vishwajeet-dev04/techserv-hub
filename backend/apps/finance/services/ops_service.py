@@ -6,11 +6,13 @@ from django.db.models import Q, Sum
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
+from apps.finance.workspace import scoped
 from apps.finance.models import (
     CapitalEntry,
     CashflowAccount,
     CashflowDirection,
     CashflowEntry,
+    OPEN_STATUSES,
     Invoice,
     InvoiceStatus,
     Payable,
@@ -20,8 +22,21 @@ from apps.finance.models import (
 )
 
 
+OVERDUE_BUCKETS = ('1-30', '31-60', '61-90', '90+')
+
+
 def _money(value) -> float:
     return float(value or 0)
+
+
+def _overdue_bucket(days_past_due: int) -> str:
+    if days_past_due <= 30:
+        return '1-30'
+    if days_past_due <= 60:
+        return '31-60'
+    if days_past_due <= 90:
+        return '61-90'
+    return '90+'
 
 
 def _parse_day(value: str | None) -> date | None:
@@ -61,10 +76,10 @@ def get_ops_summary(date_from: str | None = None, date_to: str | None = None) ->
     today = timezone.now().date()
     start = _parse_day(date_from)
     end = _parse_day(date_to)
-    pos = _po_in_range(PurchaseOrder.objects.exclude(status=PurchaseOrderStatus.CANCELLED), start, end)
+    pos = _po_in_range(scoped(PurchaseOrder.objects).exclude(status=PurchaseOrderStatus.CANCELLED), start, end)
     total_po = pos.aggregate(total=Sum('total_value'))['total'] or Decimal('0')
 
-    invoices = _in_range(Invoice.objects.all(), 'invoice_date', start, end)
+    invoices = _in_range(scoped(Invoice.objects).all(), 'invoice_date', start, end)
     total_invoiced = invoices.aggregate(total=Sum('amount'))['total'] or Decimal('0')
     open_po = total_po - total_invoiced
     if open_po < 0:
@@ -74,7 +89,7 @@ def get_ops_summary(date_from: str | None = None, date_to: str | None = None) ->
     scheduled = active_pos.aggregate(total=Sum('monthly_billing'))['total'] or Decimal('0')
     to_be_invoiced = scheduled if scheduled > 0 else Decimal('0')
 
-    outstanding = invoices.exclude(status=InvoiceStatus.PAID)
+    outstanding = invoices.filter(status__in=OPEN_STATUSES)
     receivables = sum((inv.balance for inv in outstanding), Decimal('0'))
 
     due_0_7 = Decimal('0')
@@ -98,20 +113,21 @@ def get_ops_summary(date_from: str | None = None, date_to: str | None = None) ->
             'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
             'pending_since': pending_from.isoformat(),
             'days_pending': days,
+            'status': invoice.status,
         }
-        if days <= 7:
-            due_0_7 += balance
-            due_rows.append(row)
-        elif days <= 30:
-            due_8_30 += balance
-            due_rows.append(row)
-        else:
+        if invoice.status == InvoiceStatus.OVERDUE:
             overdue += balance
             overdue_rows.append(row)
+        elif -days <= 7:
+            due_0_7 += balance
+            due_rows.append(row)
+        else:
+            due_8_30 += balance
+            due_rows.append(row)
 
     due_total = due_0_7 + due_8_30
-    inflows = _in_range(CashflowEntry.objects.filter(account=CashflowAccount.CURRENT, direction=CashflowDirection.INFLOW), 'entry_date', start, end)
-    outflows = _in_range(CashflowEntry.objects.filter(account=CashflowAccount.CURRENT, direction=CashflowDirection.OUTFLOW), 'entry_date', start, end)
+    inflows = _in_range(scoped(CashflowEntry.objects).filter(account=CashflowAccount.CURRENT, direction=CashflowDirection.INFLOW), 'entry_date', start, end)
+    outflows = _in_range(scoped(CashflowEntry.objects).filter(account=CashflowAccount.CURRENT, direction=CashflowDirection.OUTFLOW), 'entry_date', start, end)
 
     def _bucket_sum(qs, bucket):
         return _money(qs.filter(bucket=bucket).aggregate(total=Sum('amount'))['total'])
@@ -119,14 +135,12 @@ def get_ops_summary(date_from: str | None = None, date_to: str | None = None) ->
     total_inflow = _money(inflows.aggregate(total=Sum('amount'))['total'])
     total_outflow = _money(outflows.aggregate(total=Sum('amount'))['total'])
     pending_payable_rows = _payable_in_range(
-        Payable.objects.filter(status=PayableStatus.PENDING), start, end,
+        scoped(Payable.objects).filter(status__in=OPEN_STATUSES), start, end,
     )
     pay_due_0_7 = Decimal('0')
     pay_due_8_30 = Decimal('0')
     pay_overdue = Decimal('0')
-    pay_31_60 = Decimal('0')
-    pay_61_90 = Decimal('0')
-    pay_90_plus = Decimal('0')
+    pay_aging = {label: Decimal('0') for label in OVERDUE_BUCKETS}
     pay_due_rows = []
     pay_overdue_rows = []
     pending_payables = Decimal('0')
@@ -146,26 +160,22 @@ def get_ops_summary(date_from: str | None = None, date_to: str | None = None) ->
             'due_date': payable.due_date.isoformat() if payable.due_date else None,
             'pending_since': pending_from.isoformat(),
             'days_pending': days,
+            'status': payable.status,
         }
-        if days <= 7:
-            pay_due_0_7 += amount
-            pay_due_rows.append(row)
-        elif days <= 30:
-            pay_due_8_30 += amount
-            pay_due_rows.append(row)
-        else:
+        if payable.status == PayableStatus.OVERDUE:
             pay_overdue += amount
             pay_overdue_rows.append(row)
-            if days <= 60:
-                pay_31_60 += amount
-            elif days <= 90:
-                pay_61_90 += amount
-            else:
-                pay_90_plus += amount
+            pay_aging[_overdue_bucket(days)] += amount
+        elif -days <= 7:
+            pay_due_0_7 += amount
+            pay_due_rows.append(row)
+        else:
+            pay_due_8_30 += amount
+            pay_due_rows.append(row)
     pay_due_total = pay_due_0_7 + pay_due_8_30
 
     capital = {}
-    for item in _in_range(CapitalEntry.objects.all(), 'entry_date', start, end).values('capital_type').annotate(total=Sum('amount')):
+    for item in _in_range(scoped(CapitalEntry.objects).all(), 'entry_date', start, end).values('capital_type').annotate(total=Sum('amount')):
         capital[item['capital_type']] = _money(item['total'])
 
     return {
@@ -195,9 +205,8 @@ def get_ops_summary(date_from: str | None = None, date_to: str | None = None) ->
             'due_invoices': pay_due_rows[:20],
             'overdue_invoices': pay_overdue_rows[:20],
             'aging': [
-                {'bucket': '31-60', 'amount': _money(pay_31_60)},
-                {'bucket': '61-90', 'amount': _money(pay_61_90)},
-                {'bucket': '90+', 'amount': _money(pay_90_plus)},
+                {'bucket': label, 'amount': _money(pay_aging[label])}
+                for label in OVERDUE_BUCKETS
             ],
         },
         'cashflow_metrics': {
@@ -214,7 +223,7 @@ def get_ops_summary(date_from: str | None = None, date_to: str | None = None) ->
         'counts': {
             'purchase_orders': pos.count(),
             'invoices': invoices.count(),
-            'payables': _payable_in_range(Payable.objects.all(), start, end).count(),
+            'payables': _payable_in_range(scoped(Payable.objects).all(), start, end).count(),
             'cashflow_entries': (inflows.count() + outflows.count()),
         },
         'as_of': today.isoformat(),
@@ -264,7 +273,7 @@ def get_ops_dashboard_series(date_from: str | None = None, date_to: str | None =
 
     billing_map = { _month_key(m): {'month': _month_key(m), 'label': _month_label(m), 'billed': 0.0, 'received': 0.0} for m in month_starts }
     billed_rows = (
-        Invoice.objects.filter(invoice_date__gte=start_month, invoice_date__lte=_month_end(end_month))
+        scoped(Invoice.objects).filter(invoice_date__gte=start_month, invoice_date__lte=_month_end(end_month))
         .annotate(month=TruncMonth('invoice_date'))
         .values('month')
         .annotate(total=Sum('amount'))
@@ -277,7 +286,7 @@ def get_ops_dashboard_series(date_from: str | None = None, date_to: str | None =
             billing_map[key]['billed'] = _money(row['total'])
 
     received_rows = (
-        Invoice.objects.filter(received_date__gte=start_month, received_date__lte=_month_end(end_month))
+        scoped(Invoice.objects).filter(received_date__gte=start_month, received_date__lte=_month_end(end_month))
         .annotate(month=TruncMonth('received_date'))
         .values('month')
         .annotate(total=Sum('amount_received'))
@@ -292,7 +301,7 @@ def get_ops_dashboard_series(date_from: str | None = None, date_to: str | None =
     # Fallback: if no received_date coverage, attribute amount_received to invoice month
     if all(v['received'] == 0 for v in billing_map.values()):
         received_fallback = (
-            Invoice.objects.filter(invoice_date__gte=start_month, invoice_date__lte=_month_end(end_month))
+            scoped(Invoice.objects).filter(invoice_date__gte=start_month, invoice_date__lte=_month_end(end_month))
             .annotate(month=TruncMonth('invoice_date'))
             .values('month')
             .annotate(total=Sum('amount_received'))
@@ -309,7 +318,7 @@ def get_ops_dashboard_series(date_from: str | None = None, date_to: str | None =
         for m in month_starts
     }
     cash_rows = (
-        CashflowEntry.objects.filter(account=CashflowAccount.CURRENT, entry_date__gte=start_month, entry_date__lte=_month_end(end_month))
+        scoped(CashflowEntry.objects).filter(account=CashflowAccount.CURRENT, entry_date__gte=start_month, entry_date__lte=_month_end(end_month))
         .annotate(month=TruncMonth('entry_date'))
         .values('month', 'direction')
         .annotate(total=Sum('amount'))
@@ -329,7 +338,7 @@ def get_ops_dashboard_series(date_from: str | None = None, date_to: str | None =
         item['net'] = item['inflow'] - item['outflow']
 
     category_rows = (
-        _in_range(CashflowEntry.objects.filter(account=CashflowAccount.CURRENT, direction=CashflowDirection.INFLOW), 'entry_date', start, end)
+        _in_range(scoped(CashflowEntry.objects).filter(account=CashflowAccount.CURRENT, direction=CashflowDirection.INFLOW), 'entry_date', start, end)
         .values('category')
         .annotate(total=Sum('amount'))
         .order_by('-total')
@@ -340,40 +349,28 @@ def get_ops_dashboard_series(date_from: str | None = None, date_to: str | None =
         if row['total']
     ]
 
-    aging_buckets = {
-        '0-7': Decimal('0'),
-        '8-30': Decimal('0'),
-        '31-60': Decimal('0'),
-        '61-90': Decimal('0'),
-        '90+': Decimal('0'),
-    }
-    outstanding = _in_range(Invoice.objects.exclude(status=InvoiceStatus.PAID), 'invoice_date', start, end)
+    aging_labels = ('Due', *OVERDUE_BUCKETS)
+    aging_buckets = {label: Decimal('0') for label in aging_labels}
+    outstanding = _in_range(scoped(Invoice.objects).filter(status__in=OPEN_STATUSES), 'invoice_date', start, end)
     for invoice in outstanding:
         balance = invoice.balance
         if balance <= 0:
             continue
+        if invoice.status != InvoiceStatus.OVERDUE:
+            aging_buckets['Due'] += balance
+            continue
         pending_from = invoice.due_date or invoice.invoice_date
-        days = (today - pending_from).days
-        if days <= 7:
-            aging_buckets['0-7'] += balance
-        elif days <= 30:
-            aging_buckets['8-30'] += balance
-        elif days <= 60:
-            aging_buckets['31-60'] += balance
-        elif days <= 90:
-            aging_buckets['61-90'] += balance
-        else:
-            aging_buckets['90+'] += balance
+        aging_buckets[_overdue_bucket((today - pending_from).days)] += balance
 
     aging = [
         {'bucket': label, 'amount': _money(aging_buckets[label])}
-        for label in ('0-7', '8-30', '31-60', '61-90', '90+')
+        for label in aging_labels
     ]
 
     # Approximate month-end AR: open invoices dated on/before each month-end
     # (uses current amount_received — approximate historical trend).
     invoice_snapshot = list(
-        Invoice.objects.values('invoice_date', 'amount', 'amount_received', 'status')
+        scoped(Invoice.objects).values('invoice_date', 'amount', 'amount_received', 'status')
     )
 
     receivables_trend = []
@@ -383,7 +380,7 @@ def get_ops_dashboard_series(date_from: str | None = None, date_to: str | None =
         for inv in invoice_snapshot:
             if inv['invoice_date'] > end:
                 continue
-            if inv['status'] == InvoiceStatus.PAID:
+            if inv['status'] == InvoiceStatus.RECEIVED:
                 continue
             bal = Decimal(inv['amount'] or 0) - Decimal(inv['amount_received'] or 0)
             if bal > 0:
