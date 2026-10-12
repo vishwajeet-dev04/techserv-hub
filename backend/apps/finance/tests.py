@@ -963,3 +963,41 @@ class FinanceStatusTests(APITestCase):
             HTTP_X_WORKSPACE_REGION='india',
         )
         self.assertEqual(history.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class SeedComplianceCommandTests(APITestCase):
+    def _seed(self, *args):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        call_command('seed_compliance_fy2627', *args, stdout=StringIO())
+
+    def test_seeds_each_workspace_separately_and_keeps_status(self):
+        from apps.finance.management.commands._fy2627_rows import FY2627_ROWS
+        from apps.finance.models import ComplianceItem, ComplianceStatus
+
+        total = len(FY2627_ROWS)
+        self._seed()
+        techserv = ComplianceItem.objects.filter(workspace_company='techserv', workspace_region='india')
+        self.assertEqual(techserv.count(), total)
+        done = techserv.first()
+        done.status = ComplianceStatus.COMPLETED
+        done.save(update_fields=['status'])
+
+        self._seed('--company', 'techpay', '--region', 'india')
+        techpay = ComplianceItem.objects.filter(workspace_company='techpay', workspace_region='india')
+        self.assertEqual(techpay.count(), total)
+        self.assertEqual(techserv.count(), total)
+        self.assertFalse(techpay.exclude(status=ComplianceStatus.PENDING).exists())
+
+        self._seed()
+        done.refresh_from_db()
+        self.assertEqual(done.status, ComplianceStatus.COMPLETED)
+        self.assertEqual(ComplianceItem.objects.count(), total * 2)
+
+    def test_rejects_unknown_workspace(self):
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            self._seed('--company', 'acme')
